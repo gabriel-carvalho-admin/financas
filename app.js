@@ -397,7 +397,7 @@ function graficoMeses(ms) {
   <div class="sum" style="margin-top:4px"><span><i class="lg" style="background:#2e9e5b"></i> Pagamentos recebidos</span><span><i class="lg" style="background:#d9483b"></i> Gastos</span></div>`;
 }
 function listaProjetos() {
-  const ps = [...S.data.projetos].sort((a, b) => (a.status === "concluido") - (b.status === "concluido") || (b.data || "").localeCompare(a.data || ""));
+  const ps = [...S.data.projetos].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999") || a.nome.localeCompare(b.nome));
   const R = ps.map(p => ({ p, ...resumoProj(p) })), T = k => r2(R.reduce((s0, x) => s0 + x[k], 0)), contr = r2(ps.reduce((s0, p) => s0 + (p.valor || 0), 0));
   return `<div class="tools"><h2 style="flex:1">Dilcar Eventos</h2><button class="btn" data-act="editProj">Novo projeto</button></div>
   <div class="stats" style="margin-bottom:14px">${statBox("#5b6ee0", "📋", contr, "Total contratado")}${statBox("#2e9e5b", "＋", T("rec"), "Pagamentos recebidos", "pos")}${statBox("#d9483b", "－", T("gas"), "Gastos dos projetos", "neg")}${statBox("#3b7ddd", "＝", T("lucro"), "Resultado (recebido − gastos)", cls(T("lucro")))}</div>

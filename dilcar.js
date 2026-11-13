@@ -36,7 +36,7 @@ function atualizar() {
   $("#baixo").innerHTML = baixo; if ($("#dl-s") && dls != null) $("#dl-s").innerHTML = dls; if ($("#dl-g") && dlg != null) $("#dl-g").innerHTML = dlg;
 }
 function tela() {
-  const ps = [...S.projetos].sort((a, b) => (a.status === "concluido") - (b.status === "concluido") || a.nome.localeCompare(b.nome));
+  const ps = [...S.projetos].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999") || a.nome.localeCompare(b.nome));
   if (!ps.some(p => p.id === S.proj)) S.proj = ps[0]?.id || "";
   const p = ps.find(x => x.id === S.proj), ms = S.movs.filter(x => x.projetoId === S.proj);
   const soma = t => r2(ms.filter(x => x.tipo === t).reduce((s, x) => s + x.valor, 0)), rec = soma("recebimento"), gas = soma("gasto");
@@ -46,7 +46,7 @@ function tela() {
   $("#root").innerHTML = `<div class="q"><header><h1>Dilcar Eventos</h1><a class="pill" href="./">Painel completo</a></header>
   ${!S.pronto ? '<div class="card empty">Carregando…</div>' : !ps.length ? '<div class="card empty">Nenhum projeto cadastrado. Crie o projeto no painel completo (menu Dilcar Eventos) e volte aqui para lançar.</div>' : `
   <form class="card" id="fm">
-    <div class="f"><label for="proj">Projeto</label><select id="proj">${ps.map(x => `<option value="${x.id}" ${x.id === S.proj ? "selected" : ""}>${esc(x.nome)}${x.status === "concluido" ? " (concluído)" : ""}</option>`).join("")}</select></div>
+    <div class="f"><label for="proj">Projeto</label><select id="proj">${ps.map(x => `<option value="${x.id}" ${x.id === S.proj ? "selected" : ""}>${x.data ? dataBR(x.data).slice(0, 5) + " · " : ""}${esc(x.nome)}${x.status === "concluido" ? " (concluído)" : ""}</option>`).join("")}</select></div>
     <div class="f"><div class="seg"><button type="button" data-tipo="gasto" class="g ${g ? "on" : ""}">－ Despesa</button><button type="button" data-tipo="recebimento" class="r ${g ? "" : "on"}">＋ Pagamento</button></div></div>
     <div class="f"><label for="valor">Valor (R$)</label><input id="valor" data-k="valor" type="text" inputmode="decimal" placeholder="0,00" value="${esc(S.f.valor)}" autocomplete="off"></div>
     <div class="f"><label for="descricao">Descrição</label><input id="descricao" data-k="descricao" type="text" value="${esc(S.f.descricao)}" placeholder="${g ? "Ex.: Carnes, flores, garçons" : "Ex.: Sinal, 2ª parcela"}" autocomplete="off"></div>
