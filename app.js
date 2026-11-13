@@ -140,7 +140,10 @@ function semearDemo() {
 }
 
 /* ---------- cálculos ---------- */
-const fatMes = l => { if (l.faturaRef) return l.faturaRef; const c = by("cartoes", l.cartaoId); return Number(l.data.slice(8)) > (c?.fechamento || 31) ? addMes(ymOf(l.data), 1) : ymOf(l.data); };
+// A fatura leva o nome do mês do vencimento. Se o cartão vence antes do dia de fechamento (ex.: fecha dia 30, vence dia 6), ela fecha no mês anterior.
+const fechaAntes = c => (c?.vencimento || 10) <= (c?.fechamento || 31);
+const fechData = (c, ym) => dataNoMes(fechaAntes(c) ? addMes(ym, -1) : ym, c.fechamento || 31);
+const fatMes = l => { if (l.faturaRef) return l.faturaRef; const c = by("cartoes", l.cartaoId), base = Number(l.data.slice(8)) > (c?.fechamento || 31) ? addMes(ymOf(l.data), 1) : ymOf(l.data); return fechaAntes(c) ? addMes(base, 1) : base; };
 const fatItens = (cid, ym) => S.data.lancamentos.filter(l => l.cartaoId === cid && fatMes(l) === ym);
 const fatTotal = (cid, ym) => r2(fatItens(cid, ym).reduce((s, l) => s + l.valor, 0));
 const emAberto = c => r2(S.data.lancamentos.filter(l => l.cartaoId === c.id && !c.pagas?.[fatMes(l)]).reduce((s, l) => s + l.valor, 0));
@@ -284,7 +287,7 @@ V.lancamentos = () => `<div class="tools">${[["todos", "Todos"], ["despesa", "De
   <input class="search" id="busca" placeholder="Pesquisar" value="${esc(S.busca)}"></div><div class="card" id="lista">${listaLanc()}</div>`;
 
 function stFatura(c, m = S.mes) {
-  const paga = c.pagas?.[m], ft = fatTotal(c.id, m), fech = dataNoMes(m, c.fechamento || 31), venc = dataNoMes(m, c.vencimento || 10), fechada = hoje() > fech;
+  const paga = c.pagas?.[m], ft = fatTotal(c.id, m), fech = fechData(c, m), venc = dataNoMes(m, c.vencimento || 10), fechada = hoje() > fech;
   const tags = `<span class="tag" style="background:${fechada ? "#5b6ee0" : "#3b7ddd"}">${fechada ? "🔒 Fechada" : "Aberta"}</span> ` +
     (paga ? '<span class="tag" style="background:#2e9e5b">✓ Paga</span>' : ft > 0 ? `<span class="tag" style="background:${hoje() > venc ? "#d9483b" : "#f29a38"}">${hoje() > venc ? "Não paga · vencida" : "Não paga"}</span>` : '<span class="tag" style="background:#90a4ae">Sem gastos</span>');
   return { paga, ft, fech, venc, fechada, tags };
@@ -586,7 +589,7 @@ const formConta = crud("contas", "aconta", [{ k: "nome", label: "Nome da conta" 
   () => ({ nome: "", saldoInicial: "", cor: "#3b7ddd" }),
   { in: o => ({ ...o, saldoInicial: (o.saldoInicial < 0 ? "-" : "") + moneyIn(Math.abs(o.saldoInicial || 0)) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), saldoInicial: parseMoney(v.saldoInicial), cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.contaId === o.id || l.contaDestinoId === o.id) ? "Esta conta tem lançamentos. Exclua-os antes." : S.data.cartoes.some(c => c.contaId === o.id) ? "Esta conta está ligada a um cartão." : "");
-const formCartao = crud("cartoes", "ocartão", [{ k: "nome", label: "Nome do cartão" }, { k: "bandeira", label: "Bandeira" }, { k: "limite", label: "Limite (R$)", type: "money" }, { k: "fechamento", label: "Dia de fechamento", type: "number" }, { k: "vencimento", label: "Dia de vencimento", type: "number" }, { k: "contaId", label: "Conta de pagamento", type: "select", options: optContas }, { k: "cor", label: "Cor", type: "color" }],
+const formCartao = crud("cartoes", "ocartão", [{ k: "nome", label: "Nome do cartão" }, { k: "bandeira", label: "Bandeira" }, { k: "limite", label: "Limite (R$)", type: "money" }, { k: "fechamento", label: "Dia de fechamento da fatura", type: "number" }, { k: "vencimento", label: "Dia de vencimento (se for menor que o fechamento, vence no mês seguinte)", type: "number" }, { k: "contaId", label: "Conta de pagamento", type: "select", options: optContas }, { k: "cor", label: "Cor", type: "color" }],
   () => ({ nome: "", bandeira: "", limite: "", fechamento: 10, vencimento: 17, cor: "#7e22ce" }),
   { in: o => ({ ...o, limite: moneyIn(o.limite) }), out: v => { const dia = x => Math.max(1, Math.min(31, Math.floor(Number(x) || 1))); return v.nome.trim() ? { nome: v.nome.trim(), bandeira: (v.bandeira || "").trim(), limite: parseMoney(v.limite), fechamento: dia(v.fechamento), vencimento: dia(v.vencimento), contaId: v.contaId || "", cor: v.cor } : (toast("Informe o nome."), null); } },
   o => S.data.lancamentos.some(l => l.cartaoId === o.id) ? "Este cartão tem despesas. Exclua-as antes." : "");
