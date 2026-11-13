@@ -324,7 +324,7 @@ V.cartoes = () => {
       <div class="dash-l"></div><div class="fat"><span>Fatura de ${MESES[Number(m.slice(5)) - 1].toLowerCase()}</span><b class="${st.paga ? "" : st.ft > 0 ? "neg" : ""}">${brl(st.paga ? st.paga.valor : st.ft)}</b></div>
       <div class="ft" style="flex-wrap:wrap"><span>${st.tags}</span></div>
       ${st.paga ? `<div class="emp pos">Paga em ${dataBR(st.paga.data)} · conta ${esc(by("contas", st.paga.contaId)?.nome || "?")}</div>` : ""}
-      <div class="ft" style="flex-wrap:wrap"><button class="link" data-act="importar" data-id="${c.id}" title="Importar arquivo OFX ou CSV">⬆ Importar</button>
+      <div class="ft" style="flex-wrap:wrap"><button class="link" data-act="importar" data-id="${c.id}" title="Importar arquivo OFX, CSV ou XLS">⬆ Importar</button>
       ${st.paga ? `<button class="link" data-act="reabrir" data-id="${c.id}">Reabrir fatura</button>` : st.ft > 0 ? `<button class="link" data-act="pagar" data-id="${c.id}">Registrar pagamento</button>` : ""}</div></div>`;
   }).join("");
   const disp = r2(cs.reduce((s, c) => s + (c.limite || 0) - emAberto(c), 0)), fat = r2(cs.reduce((s, c) => s + fatTotal(c.id, m), 0));
@@ -676,7 +676,7 @@ const A = {
       fields: [{ k: "valor", label: `Valor recebido (R$) — deve ${brl(Math.max(0, c.deve))}`, type: "money" }, { k: "data", label: "Data", type: "date" }, { k: "contaId", label: "Entrou na conta", type: "select", options: optContas }],
       onSave: async v => { const valor = parseMoney(v.valor); if (valor <= 0 || !v.data) { toast("Informe valor e data."); return false; }
         await store.add("lancamentos", { tipo: "receita", descricao: `Pagamento de ${p.nome}`, valor, data: v.data, categoriaId: "", contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: p.id, reembolso: true, efetivada: true, recorrencia: "variavel" }); } }); },
-  importar: d => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".ofx,.qfx,.csv,.txt,text/csv"; inp.style.display = "none"; inp.id = "impfile";
+  importar: d => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".ofx,.qfx,.csv,.txt,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; inp.style.display = "none"; inp.id = "impfile";
     inp.onchange = () => { const f = inp.files[0]; inp.remove(); if (f) importarArquivo(d.id, f).catch(err => toast("Não consegui ler o arquivo: " + err.message)); };
     document.getElementById("impfile")?.remove(); document.body.append(inp); inp.click(); },
   impTodas: () => { const algum = IMP.itens.some(x => x.on); IMP.itens.forEach(x => x.on = !algum && !x.credito); telaImportar(); },
@@ -697,12 +697,12 @@ document.addEventListener("click", e => { const t = e.target.closest("[data-act]
 document.addEventListener("input", e => { if (e.target.id === "busca") { S.busca = e.target.value; $("#lista").innerHTML = listaLanc(); } });
 
 /* ---------- importar OFX / CSV no cartão ---------- */
-const impData = t => { t = String(t || "").trim(); let m;
+const impData = t => { if (t instanceof Date) { if (isNaN(t)) return ""; const d = new Date(t.getTime() + 12 * 3600e3); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; } t = String(t ?? "").trim(); let m;
   if ((m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t))) return `${m[1]}-${m[2]}-${m[3]}`;
   if ((m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/.exec(t))) return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${pad(m[2])}-${pad(m[1])}`;
   if ((m = /^(\d{4})(\d{2})(\d{2})/.exec(t))) return `${m[1]}-${m[2]}-${m[3]}`;
   return ""; };
-const impValor = t => { t = String(t ?? "").replace(/[R$\s"]/g, ""); if (!/\d/.test(t)) return NaN; const neg = /^-|-$|^\(.*\)$/.test(t); t = t.replace(/[()\-+]/g, "");
+const impValor = t => { if (typeof t === "number") return r2(t); if (t instanceof Date) return NaN; t = String(t ?? "").replace(/[R$\s"]/g, ""); if (!/\d/.test(t)) return NaN; const neg = /^-|-$|^\(.*\)$/.test(t); t = t.replace(/[()\-+]/g, "");
   const v = t.lastIndexOf(","), p = t.lastIndexOf(".");
   if (v >= 0 && p >= 0) t = v > p ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
   else if (v >= 0) t = t.replace(",", "."); else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
@@ -715,22 +715,36 @@ function lerCSV(txt) {
   const linhas = txt.replace(/^\ufeff/, "").split(/\r?\n/).filter(l => l.trim()); if (!linhas.length) return [];
   const sep = [";", "\t", ","].map(d => [d, linhas[0].split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
   const cel = l => { const out = []; let c = "", q = false; for (let i = 0; i < l.length; i++) { const ch = l[i]; if (q) { if (ch === '"') { if (l[i + 1] === '"') { c += '"'; i++; } else q = false; } else c += ch; } else if (ch === '"') q = true; else if (ch === sep) { out.push(c); c = ""; } else c += ch; } out.push(c); return out.map(x => x.trim()); };
-  const rows = linhas.map(cel), temCab = !rows[0].some(c => impData(c)), cab = temCab ? rows[0].map(c => c.toLowerCase()) : [];
-  const acha = re => cab.findIndex(c => re.test(c));
-  let iD = acha(/^data|date|dt/), iN = acha(/descri|title|hist|estabelec|lan[çc]amento|memo|nome|name/), iV = acha(/^valor$|amount|valor \(r\$\)|valor.*r\$|^valor/);
-  const corpo = temCab ? rows.slice(1) : rows, am = corpo[0] || [];
+  return tabelaParaItens(linhas.map(cel));
+}
+// Recebe linhas (listas de células) de um CSV ou planilha e acha as colunas de data, descrição e valor
+function tabelaParaItens(rows) {
+  const txt = c => (c instanceof Date ? "" : String(c ?? "")).trim(), reD = /^data|date|^dt/, reV = /^valor$|amount|valor.*r\$|^valor|montante/, reN = /descri|title|hist|estabelec|lan[çc]amento|memo|nome|name|movimenta/;
+  let ic = rows.findIndex(r => r.some(c => reD.test(txt(c).toLowerCase())) && r.some(c => reV.test(txt(c).toLowerCase())));
+  const temCab = ic >= 0, cab = temCab ? rows[ic].map(c => txt(c).toLowerCase()) : [], acha = re => cab.findIndex(c => re.test(c));
+  const corpo = (temCab ? rows.slice(ic + 1) : rows).filter(r => r.some(c => impData(c))), am = corpo[0] || [];
+  let iD = acha(reD), iN = acha(reN), iV = acha(reV);
   if (iD < 0) iD = am.findIndex(c => impData(c));
-  if (iV < 0) { for (let i = am.length - 1; i >= 0; i--) if (i !== iD && isFinite(impValor(am[i])) && /[.,]\d{2}$|^-?\d+$/.test(am[i].replace(/[R$\s]/g, ""))) { iV = i; break; } }
-  if (iN < 0) iN = am.map((c, i) => [i, i === iD || i === iV ? -1 : c.length]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? -1;
+  const pareceValor = c => typeof c === "number" || (isFinite(impValor(c)) && /[.,]\d{2}$|^-?\d+$/.test(txt(c).replace(/[R$\s]/g, "")));
+  if (iV < 0) { for (let k = am.length - 1; k >= 0; k--) if (k !== iD && pareceValor(am[k])) { iV = k; break; } }
+  if (iN < 0) iN = am.map((c, k) => [k, k === iD || k === iV ? -1 : txt(c).length]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? -1;
   if (iD < 0 || iV < 0) return [];
-  return corpo.map(r => ({ data: impData(r[iD]), valor: impValor(r[iV]), nome: r[iN] || "", fit: "" })).filter(x => x.data && isFinite(x.valor) && x.valor !== 0);
+  return corpo.map(r => ({ data: impData(r[iD]), valor: impValor(r[iV]), nome: txt(r[iN]), fit: "" })).filter(x => x.data && isFinite(x.valor) && x.valor !== 0);
+}
+async function lerPlanilha(buf) {
+  const X = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs"), wb = X.read(buf, { type: "array", cellDates: true });
+  let melhor = [];
+  for (const n of wb.SheetNames) { const it = tabelaParaItens(X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" })); if (it.length > melhor.length) melhor = it; }
+  return melhor;
 }
 let IMP = null;
 async function importarArquivo(cartaoId, file) {
-  const buf = await file.arrayBuffer(); let txt;
-  try { txt = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch (e) { txt = new TextDecoder("windows-1252").decode(buf); }
-  const ofx = /<OFX>|<STMTTRN>/i.test(txt), bruto = ofx ? lerOFX(txt) : lerCSV(txt);
-  if (!bruto.length) return toast("Não encontrei compras neste arquivo. Envie um OFX ou CSV da fatura.");
+  const buf = await file.arrayBuffer(), b = new Uint8Array(buf.slice(0, 4)), planilha = /\.xlsx?$|\.xlsm$|\.ods$/i.test(file.name) || (b[0] === 0x50 && b[1] === 0x4b) || (b[0] === 0xd0 && b[1] === 0xcf); let txt = "";
+  if (!planilha) { try { txt = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch (e) { txt = new TextDecoder("windows-1252").decode(buf); } }
+  const ofx = !planilha && /<OFX>|<STMTTRN>/i.test(txt); let bruto;
+  if (planilha) { toast("Lendo a planilha…"); try { bruto = await lerPlanilha(buf); } catch (e) { return toast("Não consegui abrir a planilha (precisa de internet na primeira vez): " + e.message); } }
+  else bruto = ofx ? lerOFX(txt) : lerCSV(txt);
+  if (!bruto.length) return toast("Não encontrei compras neste arquivo. Envie o OFX, CSV ou XLS da fatura.");
   const negs = bruto.filter(x => x.valor < 0).length, compraNeg = ofx ? negs > 0 : negs > bruto.length / 2;
   const norm = t => t.toLowerCase().replace(/\s+/g, " ").trim(), hist = new Map();
   S.data.lancamentos.forEach(l => { if (l.descOrig) hist.set(norm(l.descOrig), l); });
