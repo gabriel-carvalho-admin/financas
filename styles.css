@@ -158,6 +158,11 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .pe-emp{border-left:1px solid var(--line);padding-left:22px;min-height:200px}
 @media(max-width:1000px){.pe{grid-template-columns:minmax(0,1fr)}.pe-emp{border-left:0;padding-left:0;min-height:0}}
 
+.pertop{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-bottom:14px;font-size:13px}
+.seg.per{background:var(--card);max-width:420px;flex:1;min-width:260px}
+.seg.per button{padding:8px 4px}
+.mes .lbl{white-space:nowrap;padding:0 4px}
+
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(15,23,42,.45);display:grid;place-items:center;z-index:20;padding:12px}
 .modal{background:var(--card);border-radius:20px;width:100%;max-width:440px;max-height:92vh;overflow:auto;padding:18px}

@@ -59,7 +59,7 @@ const CATS_PADRAO = [
 ];
 
 /* ---------- estado ---------- */
-const S = { cartao: null, proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
+const S = { per: "mes", ref: hoje(), cartao: null, proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
   data: Object.fromEntries(COLS.map(c => [c, []])) };
 let store = null, fb = null, pend = false;
 const render = () => { if (pend) return; pend = true; requestAnimationFrame(() => { pend = false; draw(); }); };
@@ -67,6 +67,7 @@ const by = (col, id) => S.data[col].find(x => x.id === id);
 const contasOrd = () => [...S.data.contas].sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || a.nome.localeCompare(b.nome));
 const cat = id => id === "__emp" ? { nome: "Empréstimos", icone: "🤝", cor: "#5b6ee0" } : by("categorias", id) || { nome: "Sem categoria", icone: "📦", cor: "#90a4ae" };
 const toast = m => { const t = document.createElement("div"); t.className = "toast"; t.textContent = m; document.body.append(t); setTimeout(() => t.remove(), 2600); };
+try { const p = localStorage.getItem("mf-per"); if (["dia", "semana", "mes", "ano"].includes(p)) S.per = p; } catch (e) {}
 try { if (localStorage.getItem("mf-dark") === "1") document.documentElement.classList.add("dark"); } catch (e) {}
 
 /* ---------- armazenamento ---------- */
@@ -168,8 +169,8 @@ function movimentos(contaId) {
   }
   return out;
 }
-function resumoConta(c, ym) {
-  const mv = movimentos(c.id), ini0 = `${ym}-01`, fim = `${ym}-31`;
+function resumoConta(c, ym, ini0 = `${ym}-01`, fim = `${ym}-31`) {
+  const mv = movimentos(c.id);
   const soma = f => r2(mv.filter(f).reduce((s, x) => s + x.v, 0));
   const noMes = x => x.d >= ini0 && x.d <= fim;
   const inicial = r2((c.saldoInicial || 0) + soma(x => x.ok && x.d < ini0));
@@ -179,6 +180,18 @@ function resumoConta(c, ym) {
   const previsto = r2((c.saldoInicial || 0) + soma(x => x.d <= fim));
   return { inicial, rec, des, tc, td, saldo, previsto };
 }
+const addDias = (d, n) => { const t = new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10) + n)); return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`; };
+const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+// Período do resumo (tela Início): dia, semana (domingo a sábado), mês ou ano
+function periodo(desl = 0) {
+  const p = S.per;
+  if (p === "dia") { const d = addDias(S.ref, desl); return { ini: d, fim: d, label: `${dataBR(d)} (${DIAS[new Date(d + "T12:00").getDay()]})`, nome: "no dia", ant: "dia anterior" }; }
+  if (p === "semana") { const dom = addDias(S.ref, -new Date(S.ref + "T12:00").getDay() + 7 * desl), sab = addDias(dom, 6); return { ini: dom, fim: sab, label: `${dataBR(dom).slice(0, 5)} a ${dataBR(sab)}`, nome: "na semana", ant: "semana anterior" }; }
+  if (p === "ano") { const y = Number(S.mes.slice(0, 4)) + desl; return { ini: `${y}-01-01`, fim: `${y}-12-31`, label: `Ano de ${y}`, nome: "no ano", ant: "ano anterior" }; }
+  const ym = addMes(S.mes, desl); return { ini: `${ym}-01`, fim: `${ym}-31`, label: `${MESES[Number(ym.slice(5)) - 1]} ${ym.slice(0, 4)}`, nome: "no mês", ant: "mês anterior" };
+}
+const noPer = (tipo, P) => S.data.lancamentos.filter(l => l.tipo === tipo && l.data >= P.ini && l.data <= P.fim);
+const faturasNoPer = P => { let t = 0; for (const c of S.data.cartoes) for (let ym = ymOf(P.ini); ym <= ymOf(P.fim); ym = addMes(ym, 1)) { const v = dataNoMes(ym, c.vencimento || 10); if (v >= P.ini && v <= P.fim) t += fatTotal(c.id, ym); } return r2(t); };
 const doMes = (tipo, ym = S.mes) => S.data.lancamentos.filter(l => l.tipo === tipo && ymOf(l.data) === ym);
 const total = arr => r2(arr.reduce((s, l) => s + l.valor, 0));
 function porCategoria(arr) {
@@ -219,20 +232,21 @@ const variacao = (a, b) => b > 0 ? `<span class="chip">${a >= b ? "↗" : "↘"}
 /* ---------- telas ---------- */
 const V = {};
 V.inicio = () => {
-  const m = S.mes, ant = addMes(m, -1);
-  const rs = contasOrd().map(c => ({ c, ...resumoConta(c, m) }));
+  const P = periodo(), PA = periodo(-1), m = S.mes;
+  const rs = contasOrd().map(c => ({ c, ...resumoConta(c, m, P.ini, P.fim) }));
   const T = k => r2(rs.reduce((s, x) => s + x[k], 0));
-  const desp = doMes("despesa"), rec = doMes("receita");
-  const fat = r2(S.data.cartoes.reduce((s, c) => s + fatTotal(c.id, m), 0)), fatAnt = r2(S.data.cartoes.reduce((s, c) => s + fatTotal(c.id, ant), 0));
+  const desp = noPer("despesa", P), rec = noPer("receita", P);
+  const fat = faturasNoPer(P), fatAnt = faturasNoPer(PA), variacao = (a, b) => b > 0 ? `<span class="chip">${a >= b ? "↗" : "↘"} ${Math.abs((a - b) / b * 100).toFixed(0)}% vs. ${P.ant}</span>` : "";
   const rk = porCategoria(desp);
   const rc = k => total(desp.filter(l => (l.recorrencia || "variavel") === k));
   const stat = (cor, sym, v, lbl, extra = "", c = "") => `<div class="card stat"><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small>${extra}</div></div>`;
-  return `${avisoFixas()}<div class="grid dash">
+  return `${avisoFixas()}<div class="pertop"><div class="seg per">${[["dia", "Diário"], ["semana", "Semanal"], ["mes", "Mensal"], ["ano", "Anual"]].map(([k, n]) => `<button class="${S.per === k ? "on" : ""}" data-act="per" data-v="${k}">${n}</button>`).join("")}</div><span class="mut">Resumo ${P.nome}: <b>${P.label}</b></span></div>
+  <div class="grid dash">
   <div class="card"><div class="tl">
-    <div><span class="v">${brl(T("inicial"))}</span><small>Inicial</small></div>
-    <div class="now"><span class="v ${cls(T("saldo"))}">${brl(T("saldo"))}</span><small>Saldo atual</small></div>
+    <div><span class="v">${brl(T("inicial"))}</span><small>Inicial (antes do período)</small></div>
+    <div class="now"><span class="v ${cls(T("saldo"))}">${brl(T("saldo"))}</span><small>Saldo no fim do período</small></div>
     <div><span class="v">${brl(T("previsto"))}</span><small>Previsto</small></div></div></div>
-  <div class="card"><h3>Ranking de categorias</h3>${barras(rk)}${rk.length ? `<div class="sum">Total gasto no mês: ${brl(total(desp))}</div>` : ""}</div>
+  <div class="card"><h3>Ranking de categorias</h3>${barras(rk)}${rk.length ? `<div class="sum">Total gasto ${P.nome}: ${brl(total(desp))}</div>` : ""}</div>
   <div class="c-side">
     ${cardFixas()}
     <div class="card"><h3>Orçamentos de despesas <button class="link" data-act="nav" data-v="orcamentos">ver</button></h3>${orcLista(true)}</div>
@@ -241,9 +255,9 @@ V.inicio = () => {
   <div class="c-main">
     <div class="stats">
       ${stat("#3b7ddd", "🏦", T("saldo"), "Saldo nas contas", "", cls(T("saldo")))}
-      ${stat("#2e9e5b", "＋", total(rec), "Total recebido", variacao(total(rec), total(doMes("receita", ant))), "pos")}
-      ${stat("#d9483b", "－", total(desp), "Total gasto", variacao(total(desp), total(doMes("despesa", ant))), "neg")}
-      ${stat("#5b6ee0", "💳", fat, "Total faturas", variacao(fat, fatAnt))}
+      ${stat("#2e9e5b", "＋", total(rec), "Total recebido", variacao(total(rec), total(noPer("receita", PA))), "pos")}
+      ${stat("#d9483b", "－", total(desp), "Total gasto", variacao(total(desp), total(noPer("despesa", PA))), "neg")}
+      ${stat("#5b6ee0", "💳", fat, S.per === "mes" ? "Total faturas" : "Faturas que vencem no período", variacao(fat, fatAnt))}
     </div>
     <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true)}</div>
   </div></div>`;
@@ -495,7 +509,7 @@ function draw() {
       <button class="fab" data-act="novo" aria-label="Novo lançamento">+</button></header>
       <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="modal"></div>`;
   }
-  $("#mlbl").textContent = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
+  $("#mlbl").textContent = S.view === "inicio" && S.per !== "mes" ? periodo().label.replace("Ano de ", "") : `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
   const pendHoje = fixasMes(ymOf(hoje())).some(x => x.pend);
   $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" || k === "dilcar" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}</button>`).join("");
   const b = (k, n) => `<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}">${ico(k === "config" ? "mais" : k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}<span>${n}</span></button>`;
@@ -648,7 +662,11 @@ const A = {
   editProj: d => formProjeto(d.id), novoMov: d => formMov(d.tipo), editMov: d => formMov(null, d.id),
   abrirCartao: d => { S.cartao = d.id; $("#main").scrollTop = 0; render(); }, voltarCartao: () => { S.cartao = null; render(); },
   nav: d => { S.proj = null; S.cartao = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
-  mes: d => { S.mes = addMes(S.mes, Number(d.v)); render(); },
+  mes: d => { const n = Number(d.v), p = S.view === "inicio" ? S.per : "mes";
+    if (p === "dia" || p === "semana") { S.ref = addDias(S.ref, n * (p === "dia" ? 1 : 7)); S.mes = ymOf(S.ref); }
+    else { S.mes = addMes(S.mes, n * (p === "ano" ? 12 : 1)); S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; }
+    render(); },
+  per: d => { S.per = d.v; if (ymOf(S.ref) !== S.mes) S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; try { localStorage.setItem("mf-per", S.per); } catch (e) {} render(); },
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
   novo: d => S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa),
