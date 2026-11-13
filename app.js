@@ -48,7 +48,8 @@ const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", 
 const EMOJIS = ["🍽️","🛒","🏠","🚗","⛽","💊","🎓","🎮","👨‍👩‍👧","👕","✈️","📱","💡","🐶","🎁","💼","💰","🛍️","📅","🏋️","☕","🧾","📦","➕"];
 const GRUPOS_EV = ["Buffet", "Bebidas", "Decoração", "Equipe", "Som e luz", "Locação", "Transporte", "Outros"];
 const PALETA = ["#4a9be0", "#f5b335", "#e0564a", "#7e57c2", "#2f8f83", "#f29a38", "#3f51b5", "#26a69a", "#e57373", "#78909c"];
-const GRUPOS = [["familia", "Família"], ["parentes", "Parentes"], ["amigos", "Amigos"]];
+const GRUPOS = [["familia", "Família"], ["parentes", "Parentes"], ["amigos", "Amigos"], ["empresas", "Empresas"]];
+let grupoNovo = "familia";
 const grupoDe = p => GRUPOS.some(([k]) => k === p.grupo) ? p.grupo : "familia";
 const CATS_PADRAO = [
   ["Alimentação","🍽️","#f5b335","despesa"],["Mercado","🛒","#f29a38","despesa"],["Moradia","🏠","#7e57c2","despesa"],["Carro","🚗","#e0564a","despesa"],
@@ -124,7 +125,7 @@ function semearDemo() {
     { ...L("despesa", "Supermercado", 890, 14, "Mercado"), data: dataNoMes(ant, 14) },
     { id: id(), tipo: "despesa", descricao: "Restaurante", valor: 142, data: dataNoMes(ant, 25), categoriaId: c("Alimentação"), contaId: "", cartaoId: "k", efetivada: true, recorrencia: "variavel" }
   ];
-  D.pessoas = [{ id: "m", nome: "Mãe", cor: "#e0564a", grupo: "familia" }, { id: "i", nome: "Irmão", cor: "#2f8f83", grupo: "familia" }, { id: "t", nome: "Tia", cor: "#7e57c2", grupo: "parentes" }, { id: "x", nome: "Amigo", cor: "#f29a38", grupo: "amigos" }];
+  D.pessoas = [{ id: "e1", nome: "Empresa Exemplo Ltda", cor: "#5b6ee0", grupo: "empresas" }, { id: "m", nome: "Mãe", cor: "#e0564a", grupo: "familia" }, { id: "i", nome: "Irmão", cor: "#2f8f83", grupo: "familia" }, { id: "t", nome: "Tia", cor: "#7e57c2", grupo: "parentes" }, { id: "x", nome: "Amigo", cor: "#f29a38", grupo: "amigos" }];
   D.lancamentos.filter(l => ["Farmácia", "Supermercado"].includes(l.descricao)).forEach(l => l.pessoaId = "m");
   D.lancamentos.filter(l => ["Notebook 2/6", "Cinema"].includes(l.descricao)).forEach(l => l.pessoaId = "i");
   D.lancamentos.forEach(l => { const sg = { Combustível: "Gasolina", Supermercado: "Compras do mês", Almoço: "Restaurante", Farmácia: "Remédios", Internet: "Internet", Energia: "Luz" }[l.descricao]; if (sg) l.subgrupo = sg; });
@@ -389,12 +390,13 @@ V.pessoas = () => {
       <div class="tri" style="margin-top:12px"><div><small>No cartão</small>${brl(kc)}</div><div><small>Em conta</small>${brl(r2(t - kc))}</div><div><small>Do total</small>${(t / tudo * 100).toFixed(0)}%</div></div>`}</div>`; };
   const meus = doMes("despesa").filter(l => !validos.has(l.pessoaId));
   const outros = r2(ps.reduce((s0, p) => s0 + total(gastosDe(p.id)), 0));
-  return `<div class="tools"><h2 style="flex:1">Gastos por pessoa</h2><button class="btn" data-act="editPessoa">Nova pessoa</button></div>
+  return `<div class="tools"><h2 style="flex:1">Gastos por pessoa e empresa</h2><button class="btn" data-act="editPessoa">Nova pessoa</button><button class="btn ghost" data-act="editPessoa" data-grupo="empresas">Nova empresa</button></div>
   <div class="grid cc">${card({ id: "", nome: "Eu", cor: "#3b7ddd" }, meus)}</div>
-  ${GRUPOS.map(([k, n]) => { const g = ps.filter(p => grupoDe(p) === k), deve = r2(g.reduce((s0, p) => s0 + Math.max(0, contaPessoa(p.id).deve), 0));
-    return `<div class="gh"><h3>${n}</h3><span>${g.length} ${g.length === 1 ? "pessoa" : "pessoas"} · a receber <b class="${deve > 0 ? "neg" : ""}">${brl(deve)}</b></span></div>
-    <div class="grid cc pgrp" data-grupo="${k}">${g.map(p => card(p, gastosDe(p.id))).join("")}<div class="vazio">Arraste alguém para cá</div></div>`; }).join("")}
-  <div class="sum"><span>Meus gastos no mês: <b>${brl(total(meus))}</b></span><span>Gastos de outras pessoas no mês: <b>${brl(outros)}</b></span><span>Total a receber até ${mesNome}: <b class="neg">${brl(r2(ps.reduce((s0, p) => s0 + Math.max(0, contaPessoa(p.id).deve), 0)))}</b></span></div>
+  ${(() => { const bloco = ([k, n]) => { const g = ps.filter(p => grupoDe(p) === k), deve = r2(g.reduce((s0, p) => s0 + Math.max(0, contaPessoa(p.id).deve), 0)), emp = k === "empresas";
+      return `<div class="gh"><h3>${n}</h3><span>${g.length} ${emp ? (g.length === 1 ? "empresa" : "empresas") : g.length === 1 ? "pessoa" : "pessoas"} · a receber <b class="${deve > 0 ? "neg" : ""}">${brl(deve)}</b></span></div>
+      <div class="grid cc pgrp" data-grupo="${k}">${g.map(p => card(p, gastosDe(p.id))).join("")}<div class="vazio">${emp ? "Arraste ou cadastre uma empresa aqui" : "Arraste alguém para cá"}</div></div>`; };
+    return `<div class="pe"><div>${GRUPOS.filter(([k]) => k !== "empresas").map(bloco).join("")}</div><div class="pe-emp">${bloco(GRUPOS.find(([k]) => k === "empresas"))}</div></div>`; })()}
+  <div class="sum"><span>Meus gastos no mês: <b>${brl(total(meus))}</b></span><span>Gastos de pessoas e empresas no mês: <b>${brl(outros)}</b></span><span>Total a receber até ${mesNome}: <b class="neg">${brl(r2(ps.reduce((s0, p) => s0 + Math.max(0, contaPessoa(p.id).deve), 0)))}</b></span></div>
   <div class="sum">${ps.length ? "Total a cobrar (gastos + empréstimos), já pagou e ainda deve somam tudo desde o início até o mês selecionado. Arraste pelo botão ⠿ para mudar a pessoa de grupo ou de ordem." : ""}</div>
   ${ps.length ? "" : '<div class="sum">Cadastre as pessoas da casa e, em cada despesa, escolha de quem é o gasto.</div>'}`;
 };
@@ -553,7 +555,7 @@ function formLanc(orig, cartaoId, pessoaId) {
       { k: "categoriaId", label: "Categoria (grupo)", type: "select", redraw: true, options: v => optCats(v.tipo), when: v => v.tipo !== "transferencia" && !o.reembolso },
       { k: "subgrupo", label: "Subgrupo (opcional — ex.: Gasolina, Farmácia)", list: v => [...new Set(S.data.lancamentos.filter(l => l.subgrupo && l.categoriaId === v.categoriaId).map(l => l.subgrupo))].sort((a, b) => a.localeCompare(b)), when: v => v.tipo !== "transferencia" && !o.reembolso },
       { k: "origem", label: "Pagar com", type: "select", redraw: true, options: () => [...optContas().map(([k, n]) => ["c:" + k, n]), ...S.data.cartoes.map(c => ["k:" + c.id, "💳 " + c.nome])], when: v => v.tipo === "despesa" },
-      { k: "pessoaId", label: "Gasto de quem", type: "select", options: () => [["", "Eu"], ...[...S.data.pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).map(p => [p.id, p.nome])], when: v => v.tipo === "despesa" && S.data.pessoas.length > 0 },
+      { k: "pessoaId", label: "Gasto de quem (pessoa ou empresa)", type: "select", options: () => [["", "Eu"], ...[...S.data.pessoas].sort((a, b) => (grupoDe(a) === "empresas") - (grupoDe(b) === "empresas") || a.nome.localeCompare(b.nome)).map(p => [p.id, (grupoDe(p) === "empresas" ? "🏢 " : "") + p.nome])], when: v => v.tipo === "despesa" && S.data.pessoas.length > 0 },
       { k: "origem", label: "Conta", type: "select", options: () => optContas().map(([k, n]) => ["c:" + k, n]), when: v => v.tipo === "receita" },
       { k: "origem", label: "Conta de origem", type: "select", options: () => optContas().map(([k, n]) => ["c:" + k, n]), when: v => v.tipo === "transferencia" },
       { k: "destino", label: "Conta de destino", type: "select", options: optContas, when: v => v.tipo === "transferencia" },
@@ -598,7 +600,7 @@ const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", opti
   { in: o => o, out: v => v.nome.trim() ? { tipo: v.tipo, nome: v.nome.trim(), icone: v.icone, cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.categoriaId === o.id) ? "Esta categoria tem lançamentos." : S.data.orcamentos.some(x => x.categoriaId === o.id) ? "Esta categoria tem orçamento." : "");
 const formPessoa = crud("pessoas", "apessoa", [{ k: "nome", label: "Nome" }, { k: "grupo", label: "Grupo", type: "select", options: GRUPOS }, { k: "cor", label: "Cor", type: "color" }],
-  () => ({ nome: "", grupo: "familia", cor: "#e0564a" }), { in: o => ({ ...o, grupo: grupoDe(o) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), grupo: v.grupo || "familia", cor: v.cor } : (toast("Informe o nome."), null) },
+  () => ({ nome: "", grupo: grupoNovo, cor: grupoNovo === "empresas" ? "#5b6ee0" : "#e0564a" }), { in: o => ({ ...o, grupo: grupoDe(o) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), grupo: v.grupo || "familia", cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.pessoaId === o.id) ? "Esta pessoa tem despesas. Troque ou exclua as despesas antes." : "");
 const formFixa = crud("fixas", "aconta mensal", [{ k: "nome", label: "Nome (ex.: Água, Luz)" }, { k: "dia", label: "Dia em que costuma vencer", type: "number" }, { k: "categoriaId", label: "Categoria", type: "select", options: () => optCats("despesa") }, { k: "contaId", label: "Conta em que costuma pagar", type: "select", options: optContas }],
   () => ({ nome: "", dia: 10 }), { in: o => o, out: v => v.nome.trim() ? { nome: v.nome.trim(), dia: Math.max(1, Math.min(31, Math.floor(Number(v.dia) || 10))), categoriaId: v.categoriaId || "", contaId: v.contaId || "" } : (toast("Informe o nome."), null) });
@@ -653,7 +655,7 @@ const A = {
   editL: d => { const l = by("lancamentos", d.id); l?.emprestimo ? formEmprestimo(l.pessoaId, l.id) : formLanc(l); },
   emprestar: d => formEmprestimo(d.id),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
-  editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => formPessoa(d.id), editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
+  editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => { grupoNovo = d.grupo || "familia"; formPessoa(d.id); }, editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
   pagar: d => { const c = by("cartoes", d.id), valor = fatTotal(c.id, S.mes);
     openForm({ title: `Pagar fatura — ${brl(valor)}`, values: { contaId: c.contaId, data: hoje() }, fields: [{ k: "contaId", label: "De qual conta saiu o dinheiro", type: "select", options: optContas }, { k: "data", label: "Data do pagamento", type: "date" }],
       onSave: v => store.set("cartoes", c.id, { ...c, pagas: { ...(c.pagas || {}), [S.mes]: { contaId: v.contaId, data: v.data || hoje(), valor } } }) }); },

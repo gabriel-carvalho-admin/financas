@@ -154,6 +154,10 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .ft2{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .card>h3 span .tag{font-weight:600}
 
+.pe{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:22px;align-items:start}
+.pe-emp{border-left:1px solid var(--line);padding-left:22px;min-height:200px}
+@media(max-width:1000px){.pe{grid-template-columns:minmax(0,1fr)}.pe-emp{border-left:0;padding-left:0;min-height:0}}
+
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(15,23,42,.45);display:grid;place-items:center;z-index:20;padding:12px}
 .modal{background:var(--card);border-radius:20px;width:100%;max-width:440px;max-height:92vh;overflow:auto;padding:18px}
