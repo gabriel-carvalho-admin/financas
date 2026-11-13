@@ -464,12 +464,11 @@ function telaLogin(msg = "") {
     <div class="f"><label for="em">E-mail</label><input id="em" type="email" autocomplete="username" required></div>
     <div class="f"><label for="pw">Senha</label><input id="pw" type="password" autocomplete="current-password" required></div>
     <div class="err" id="err">${esc(msg)}</div><button class="btn">Entrar</button>
-    <div class="alt"><button type="button" class="link" id="criar">Criar conta</button><button type="button" class="link" id="reset">Esqueci a senha</button></div>
+    <div class="alt" style="justify-content:center"><button type="button" class="link" id="reset">Esqueci a senha</button></div>
     <div class="alt" style="justify-content:center"><button type="button" class="link mut" id="demo">Ver demonstração</button></div></form></div>`;
   const err = e => { $("#err").textContent = ERROS[e.code] || "Não foi possível entrar (" + (e.code || e.message) + ")."; };
   const cred = () => [$("#em").value.trim(), $("#pw").value];
   $("form").onsubmit = e => { e.preventDefault(); if (!fb) return err({ code: "auth/network-request-failed" }); fb.A.signInWithEmailAndPassword(fb.auth, ...cred()).catch(err); };
-  $("#criar").onclick = () => fb ? fb.A.createUserWithEmailAndPassword(fb.auth, ...cred()).catch(err) : err({ code: "auth/network-request-failed" });
   $("#reset").onclick = () => fb && fb.A.sendPasswordResetEmail(fb.auth, cred()[0]).then(() => { $("#err").textContent = "Enviamos um e-mail para redefinir a senha."; }).catch(err);
   $("#demo").onclick = entrarDemo;
 }

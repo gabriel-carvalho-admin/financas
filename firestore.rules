@@ -1,9 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Cada pessoa só lê e grava os próprios dados
+    // Somente a conta do dono acessa os dados
     match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if request.auth != null && request.auth.uid == uid
+        && request.auth.uid == 'E1AOMuAlKAcFpGqEDiI7mGbh8R62';
     }
   }
 }
