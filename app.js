@@ -406,6 +406,7 @@ function listaProjetos() {
     <div class="prog"><i style="width:${p.valor ? Math.min(100, rec / p.valor * 100) : 0}%;background:var(--ok)"></i></div>
     <div class="dash-l"></div><div class="fat"><span>Resultado</span><b class="${cls(lucro)}">${brl(lucro)}</b></div>
     <div class="ft"><span class="tag" style="background:${p.status === "concluido" ? "#2e9e5b" : "#3b7ddd"}">${p.status === "concluido" ? "Concluído" : "Em andamento"}</span><span class="mut">${falta > 0.005 ? "A receber " + brl(falta) : "Contrato quitado"}</span></div></div>`).join("")}</div>` : '<div class="card empty">Nenhum projeto ainda. Toque em "Novo projeto" para criar o primeiro evento.</div>'}
+  <div class="sum"><a class="pill" href="dilcar.html">📱 Lançamento rápido pelo celular</a></div>
   <div class="sum">O dinheiro dos projetos fica separado: não entra nas suas contas, no saldo nem nos relatórios pessoais.</div>`;
 }
 function paginaProjeto(p) {
@@ -692,7 +693,7 @@ async function iniciar() {
   try {
     const [app, A_, F] = await Promise.all([import(FB + "firebase-app.js"), import(FB + "firebase-auth.js"), import(FB + "firebase-firestore.js")]);
     const a = app.initializeApp(firebaseConfig);
-    let db; try { db = F.initializeFirestore(a, { localCache: F.persistentLocalCache() }); } catch (e) { db = F.getFirestore(a); }
+    let db; try { db = F.initializeFirestore(a, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); } catch (e) { db = F.getFirestore(a); }
     fb = { A: A_, F, auth: A_.getAuth(a), db };
   } catch (e) { return telaLogin("Sem conexão com o servidor. Você pode ver a demonstração."); }
   fb.A.onAuthStateChanged(fb.auth, async u => {

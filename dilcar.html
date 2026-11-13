@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dilcar — lançamento rápido</title>
+<meta name="theme-color" content="#7e57c2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Dilcar">
+<link rel="manifest" href="dilcar.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+<style>
+.q{max-width:520px;margin:0 auto;padding:14px 14px calc(24px + env(safe-area-inset-bottom));padding-top:calc(14px + env(safe-area-inset-top))}
+.q header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.q header h1{font-size:18px;flex:1}
+.q .card{margin-bottom:14px}
+.q .seg button{padding:13px 4px;font-size:15px}
+.q .seg button.on.g{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+.q .seg button.on.r{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.q .f input,.q .f select{height:48px;font-size:16px}
+.q #valor{height:60px;font-size:26px;font-weight:700;text-align:center}
+.q .salvar{width:100%;height:52px;font-size:16px;border-radius:14px}
+.q .tri{font-size:13px}
+.q .x{color:var(--mut);padding:6px 8px;border-radius:8px;font-size:12px}
+.q .x.c{background:var(--bad);color:#fff}
+html,body,#root{height:auto;min-height:100%}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="dilcar.js"></script>
+</body>
+</html>
