@@ -58,7 +58,7 @@ const CATS_PADRAO = [
 ];
 
 /* ---------- estado ---------- */
-const S = { proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
+const S = { cartao: null, proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
   data: Object.fromEntries(COLS.map(c => [c, []])) };
 let store = null, fb = null, pend = false;
 const render = () => { if (pend) return; pend = true; requestAnimationFrame(() => { pend = false; draw(); }); };
@@ -283,23 +283,50 @@ function listaLanc() {
 V.lancamentos = () => `<div class="tools">${[["todos", "Todos"], ["despesa", "Despesas"], ["receita", "Receitas"], ["transferencia", "Transf."], ["pendentes", "Pendentes"]].map(([k, n]) => `<button class="pill ${S.filtro === k ? "on" : ""}" data-act="filtro" data-v="${k}">${n}</button>`).join("")}
   <input class="search" id="busca" placeholder="Pesquisar" value="${esc(S.busca)}"></div><div class="card" id="lista">${listaLanc()}</div>`;
 
+function stFatura(c, m = S.mes) {
+  const paga = c.pagas?.[m], ft = fatTotal(c.id, m), fech = dataNoMes(m, c.fechamento || 31), venc = dataNoMes(m, c.vencimento || 10), fechada = hoje() > fech;
+  const tags = `<span class="tag" style="background:${fechada ? "#5b6ee0" : "#3b7ddd"}">${fechada ? "🔒 Fechada" : "Aberta"}</span> ` +
+    (paga ? '<span class="tag" style="background:#2e9e5b">✓ Paga</span>' : ft > 0 ? `<span class="tag" style="background:${hoje() > venc ? "#d9483b" : "#f29a38"}">${hoje() > venc ? "Não paga · vencida" : "Não paga"}</span>` : '<span class="tag" style="background:#90a4ae">Sem gastos</span>');
+  return { paga, ft, fech, venc, fechada, tags };
+}
+function paginaCartao(c) {
+  const m = S.mes, st = stFatura(c), ab = emAberto(c), disp = r2((c.limite || 0) - ab), mesNome = MESES[Number(m.slice(5)) - 1].toLowerCase();
+  const it = fatItens(c.id, m).sort((a, b) => b.data.localeCompare(a.data) || a.descricao.localeCompare(b.descricao)), rk = porCategoria(it);
+  const maiores = [...it].sort((a, b) => b.valor - a.valor).slice(0, 8).map(l => ({ c: { nome: l.descricao, cor: cat(l.categoriaId).cor }, v: l.valor, p: l.valor / (st.ft || 1) * 100 }));
+  return `<div class="tools"><button class="pill" data-act="voltarCartao">‹ Cartões</button><h2 style="flex:1;min-width:140px">${esc(c.nome)}</h2>
+    <button class="btn" data-act="novo" data-cartao="${c.id}">+ Despesa</button><button class="btn ghost" data-act="importar" data-id="${c.id}">⬆ Importar</button><button class="btn ghost" data-act="editCartao" data-id="${c.id}">Editar</button></div>
+  <div class="stats" style="margin-bottom:14px">${statBox("#5b6ee0", "💳", c.limite || 0, "Limite")}${statBox("#f29a38", "⏳", ab, "Em aberto (todas as faturas)")}${statBox("#2e9e5b", "✓", disp, "Limite disponível", disp < 0 ? "neg" : "")}${statBox("#d9483b", "－", st.paga ? st.paga.valor : st.ft, `Fatura de ${mesNome}`, st.paga ? "" : "neg")}</div>
+  <div class="card" style="margin-bottom:14px"><h3>Fatura de ${mesNome} <span>${st.tags}</span></h3>
+    <div class="tri"><div><small>Fechamento</small>${dataBR(st.fech)}</div><div><small>Vencimento</small>${dataBR(st.venc)}</div><div><small>Valor</small><b>${brl(st.paga ? st.paga.valor : st.ft)}</b></div></div>
+    <div class="dash-l" style="border-top:1px dashed var(--line);margin:10px 0"></div>
+    ${st.paga ? `<div class="ft2"><span class="pos b">✓ Paga em ${dataBR(st.paga.data)}</span><span>com a conta <b>${esc(by("contas", st.paga.contaId)?.nome || "?")}</b> · ${brl(st.paga.valor)}</span><span class="sp"></span><button class="btn ghost" data-act="reabrir" data-id="${c.id}">Reabrir fatura</button></div>`
+      : st.ft > 0 ? `<div class="ft2"><span class="${hoje() > st.venc ? "neg b" : "mut"}">${hoje() > st.venc ? "Fatura vencida e ainda não paga." : "Ainda não paga."}</span><span class="sp"></span><button class="btn" data-act="pagar" data-id="${c.id}">Registrar pagamento</button></div>` : '<div class="mut">Nenhum gasto nesta fatura.</div>'}</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start">
+    <div class="card"><h3>Gastos por categoria</h3>${donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(st.ft))}</div>
+    <div class="card"><h3>Maiores gastos</h3>${barras(maiores)}</div>
+    <div class="card"><h3>Gastos da fatura <button class="link" data-act="novo" data-cartao="${c.id}">+ novo</button></h3>${it.map(l => `<div class="row" data-act="editL" data-id="${l.id}">${av(cat(l.categoriaId).icone, cat(l.categoriaId).cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${sub(l)}</small></div><b class="neg">${brl(l.valor)}</b></div>`).join("") || '<div class="empty">Nenhum gasto nesta fatura.</div>'}
+      ${it.length ? `<div class="sum">${it.length} ${it.length === 1 ? "gasto" : "gastos"} · total <b class="neg">${brl(st.ft)}</b></div>` : ""}</div>
+  </div>`;
+}
 V.cartoes = () => {
-  const m = S.mes, cs = S.data.cartoes;
+  const m = S.mes, cs = S.data.cartoes, aberto = S.cartao && by("cartoes", S.cartao);
+  if (aberto) return paginaCartao(aberto);
   const cards = cs.map(c => {
-    const ab = emAberto(c), disp = r2((c.limite || 0) - ab), ft = fatTotal(c.id, m), paga = c.pagas?.[m];
-    const fech = dataNoMes(m, c.fechamento || 31), st = paga ? ["Paga", "#2e9e5b"] : hoje() > fech ? ["Fechada", "#d9483b"] : ["Aberta", "#3b7ddd"];
-    return `<div class="card"><div class="hd">${av(ini(c.nome), c.cor)}<div class="tx"><b>${esc(c.nome)}</b><small>${esc(c.bandeira || "Cartão de crédito")}</small></div>
+    const ab = emAberto(c), disp = r2((c.limite || 0) - ab), st = stFatura(c);
+    return `<div class="card pcard" data-act="abrirCartao" data-id="${c.id}"><div class="hd">${av(ini(c.nome), c.cor)}<div class="tx"><b>${esc(c.nome)}</b><small>${esc(c.bandeira || "Cartão de crédito")}</small></div>
       <button class="link mais" data-act="novo" data-cartao="${c.id}" title="Nova despesa">+</button><button data-act="editCartao" data-id="${c.id}" title="Editar">${ico("mais")}</button></div>
       <div class="tri"><div><small>Limite</small>${brl(c.limite || 0)}</div><div><small>Em aberto</small>${brl(ab)}</div><div><small>Limite disp.</small><span class="${disp < 0 ? "neg" : ""}">${brl(disp)}</span></div></div>
       <div class="prog"><i style="width:${Math.min(100, c.limite ? ab / c.limite * 100 : 0)}%;background:${esc(c.cor)}"></i></div>
-      <div class="tri" style="margin-top:12px"><div><small>Conta</small>${esc(by("contas", c.contaId)?.nome || "-")}</div><div><small>Fechamento</small>${dataBR(fech).slice(0, 5)}</div><div><small>Vencimento</small>${dataBR(dataNoMes(m, c.vencimento || 10)).slice(0, 5)}</div></div>
-      <div class="dash-l"></div><div class="fat"><span>Fatura de ${MESES[Number(m.slice(5)) - 1].toLowerCase()}</span><b class="${paga ? "" : ft > 0 ? "neg" : ""}">${brl(paga ? paga.valor : ft)}</b></div>
-      <div class="ft"><span class="tag" style="background:${st[1]}">${st[0]}</span><span><button class="link" data-act="importar" data-id="${c.id}" title="Importar arquivo OFX ou CSV">⬆ Importar</button> &nbsp; <button class="link" data-act="verFatura" data-id="${c.id}">Itens</button> &nbsp;
-      ${paga ? `<button class="link" data-act="reabrir" data-id="${c.id}">Reabrir</button>` : ft > 0 ? `<button class="link" data-act="pagar" data-id="${c.id}">Registrar pagamento</button>` : ""}</span></div></div>`;
+      <div class="tri" style="margin-top:12px"><div><small>Conta</small>${esc(by("contas", c.contaId)?.nome || "-")}</div><div><small>Fechamento</small>${dataBR(st.fech).slice(0, 5)}</div><div><small>Vencimento</small>${dataBR(st.venc).slice(0, 5)}</div></div>
+      <div class="dash-l"></div><div class="fat"><span>Fatura de ${MESES[Number(m.slice(5)) - 1].toLowerCase()}</span><b class="${st.paga ? "" : st.ft > 0 ? "neg" : ""}">${brl(st.paga ? st.paga.valor : st.ft)}</b></div>
+      <div class="ft" style="flex-wrap:wrap"><span>${st.tags}</span></div>
+      ${st.paga ? `<div class="emp pos">Paga em ${dataBR(st.paga.data)} · conta ${esc(by("contas", st.paga.contaId)?.nome || "?")}</div>` : ""}
+      <div class="ft" style="flex-wrap:wrap"><button class="link" data-act="importar" data-id="${c.id}" title="Importar arquivo OFX ou CSV">⬆ Importar</button>
+      ${st.paga ? `<button class="link" data-act="reabrir" data-id="${c.id}">Reabrir fatura</button>` : st.ft > 0 ? `<button class="link" data-act="pagar" data-id="${c.id}">Registrar pagamento</button>` : ""}</div></div>`;
   }).join("");
   const disp = r2(cs.reduce((s, c) => s + (c.limite || 0) - emAberto(c), 0)), fat = r2(cs.reduce((s, c) => s + fatTotal(c.id, m), 0));
   return `<div class="tools"><h2 style="flex:1">Cartões</h2><button class="btn" data-act="editCartao">Novo cartão</button></div>
-  ${cs.length ? `<div class="grid cc">${cards}</div><div class="sum"><span>Limite disponível: <b>${brl(disp)}</b></span><span>Total de faturas no mês: <b>${brl(fat)}</b></span></div>` : '<div class="card empty">Nenhum cartão cadastrado.</div>'}`;
+  ${cs.length ? `<div class="grid cc">${cards}</div><div class="sum"><span>Limite disponível: <b>${brl(disp)}</b></span><span>Total de faturas no mês: <b>${brl(fat)}</b></span></div><div class="sum">Toque em um cartão para ver os gastos, os gráficos e registrar o pagamento da fatura.</div>` : '<div class="card empty">Nenhum cartão cadastrado.</div>'}`;
 };
 
 const lancFixa = (f, ym = S.mes) => S.data.lancamentos.find(l => l.fixaId === f.id && l.mesRef === ym);
@@ -614,17 +641,18 @@ function exportarCSV() {
 const A = {
   abrirProj: d => { S.proj = d.id; $("#main").scrollTop = 0; render(); }, voltarProj: () => { S.proj = null; render(); },
   editProj: d => formProjeto(d.id), novoMov: d => formMov(d.tipo), editMov: d => formMov(null, d.id),
-  nav: d => { S.proj = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
+  abrirCartao: d => { S.cartao = d.id; $("#main").scrollTop = 0; render(); }, voltarCartao: () => { S.cartao = null; render(); },
+  nav: d => { S.proj = null; S.cartao = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
   mes: d => { S.mes = addMes(S.mes, Number(d.v)); render(); },
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
-  novo: d => S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao, d.pessoa),
+  novo: d => S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa),
   editL: d => { const l = by("lancamentos", d.id); l?.emprestimo ? formEmprestimo(l.pessoaId, l.id) : formLanc(l); },
   emprestar: d => formEmprestimo(d.id),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
   editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => formPessoa(d.id), editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
   pagar: d => { const c = by("cartoes", d.id), valor = fatTotal(c.id, S.mes);
-    openForm({ title: `Pagar fatura — ${brl(valor)}`, values: { contaId: c.contaId, data: hoje() }, fields: [{ k: "contaId", label: "Pagar com a conta", type: "select", options: optContas }, { k: "data", label: "Data do pagamento", type: "date" }],
+    openForm({ title: `Pagar fatura — ${brl(valor)}`, values: { contaId: c.contaId, data: hoje() }, fields: [{ k: "contaId", label: "De qual conta saiu o dinheiro", type: "select", options: optContas }, { k: "data", label: "Data do pagamento", type: "date" }],
       onSave: v => store.set("cartoes", c.id, { ...c, pagas: { ...(c.pagas || {}), [S.mes]: { contaId: v.contaId, data: v.data || hoje(), valor } } }) }); },
   reabrir: d => { const c = by("cartoes", d.id), pagas = { ...(c.pagas || {}) }; delete pagas[S.mes]; store.set("cartoes", c.id, { ...c, pagas }); },
   verFatura: d => { const it = fatItens(d.id, S.mes).sort((a, b) => a.data.localeCompare(b.data));
