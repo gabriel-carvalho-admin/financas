@@ -749,10 +749,12 @@ async function importarArquivo(cartaoId, file) {
   const norm = t => t.toLowerCase().replace(/\s+/g, " ").trim(), hist = new Map();
   S.data.lancamentos.forEach(l => { if (l.descOrig) hist.set(norm(l.descOrig), l); });
   const doCartao = S.data.lancamentos.filter(l => l.cartaoId === cartaoId);
+  bruto.forEach(x => { x.nome = String(x.nome || "").replace(/\s+/g, " ").trim(); });
   IMP = { cartaoId, arquivo: file.name, modo: "fatura", itens: bruto.map(x => {
     const credito = compraNeg ? x.valor > 0 : x.valor < 0, valor = Math.abs(x.valor), importId = x.fit || `${x.data}|${valor}|${norm(x.nome)}`, h = hist.get(norm(x.nome));
     const dup = doCartao.some(l => l.importId === importId || (l.data === x.data && l.valor === valor && norm(l.descOrig || l.descricao) === norm(x.nome)));
-    return { on: !credito && !dup, credito, dup, data: x.data, valor, descOrig: x.nome, nome: h?.descricao || x.nome, categoriaId: h?.categoriaId || "", subgrupo: h?.subgrupo || "", pessoaId: h?.pessoaId || "", importId };
+    const talvez = !dup && !credito && doCartao.some(l => l.data === x.data && l.valor === valor);
+    return { on: !credito && !dup && !talvez, credito, dup, talvez, data: x.data, valor, descOrig: x.nome, nome: h?.descricao || x.nome, categoriaId: h?.categoriaId || "", subgrupo: h?.subgrupo || "", pessoaId: h?.pessoaId || "", importId };
   }).sort((a, b) => a.data.localeCompare(b.data)) };
   telaImportar();
 }
@@ -766,7 +768,7 @@ function telaImportar() {
     <div class="impbar"><span>Aplicar às marcadas:</span>${selCat("", 'id="impcat"')}<input id="impsub" type="text" placeholder="Subgrupo" autocomplete="off"><button class="btn ghost" data-act="impAplicar">Aplicar</button><button class="btn ghost" data-act="impTodas">Marcar / desmarcar todas</button></div>
     <div class="implist">${IMP.itens.map((x, i) => `<div class="impi ${x.on ? "" : "off"}" data-i="${i}">
       <label class="impck"><input type="checkbox" data-imp="on" ${x.on ? "checked" : ""}> <span>${dataBR(x.data)}</span></label><b class="${x.credito ? "pos" : "neg"}">${brl(x.valor)}</b>
-      ${x.dup ? '<span class="tag" style="background:#f29a38">Já importada</span>' : x.credito ? '<span class="tag" style="background:#2e9e5b">Pagamento / estorno</span>' : "<span></span>"}
+      ${x.dup ? '<span class="tag" style="background:#f29a38">Já importada</span>' : x.talvez ? '<span class="tag" style="background:#f29a38" title="Já existe neste cartão uma compra com a mesma data e o mesmo valor">Possível repetida</span>' : x.credito ? '<span class="tag" style="background:#2e9e5b">Pagamento / estorno</span>' : "<span></span>"}
       <input class="impn" type="text" data-imp="nome" value="${esc(x.nome)}" title="Nome original: ${esc(x.descOrig)}" autocomplete="off">
       ${selCat(x.categoriaId, 'data-imp="categoriaId"')}<input type="text" data-imp="subgrupo" value="${esc(x.subgrupo)}" placeholder="Subgrupo" autocomplete="off">
       ${ps.length ? `<select data-imp="pessoaId"><option value="">Eu</option>${ps.map(p => `<option value="${p.id}" ${p.id === x.pessoaId ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>` : ""}</div>`).join("")}</div>
