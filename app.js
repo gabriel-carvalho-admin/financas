@@ -8,7 +8,7 @@ const firebaseConfig = {
   appId: "1:986463923028:web:741ca828cfba9bba4bf6c1"
 };
 const FB = "https://www.gstatic.com/firebasejs/10.14.1/";
-const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas", "fixas", "projetos", "movProjeto"];
+const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas", "fixas", "projetos", "movProjeto", "energia", "config"];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
 /* ---------- utilidades ---------- */
@@ -39,12 +39,13 @@ const I = {
   relatorios: '<circle cx="12" cy="12" r="9"/><path d="M12 3v9h9"/>',
   categorias: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>',
   config: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+  energia: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
   dilcar: '<path d="M12 3l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6L3.4 9.4l6-.8z"/>',
   mais: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
 };
 const ico = n => `<svg class="ico" viewBox="0 0 24 24">${I[n]}</svg>`;
 const LOGO = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#3b7ddd" stroke-width="6"/><path d="M16 5a11 11 0 0 1 9.5 16.5" fill="none" stroke="#2e9e5b" stroke-width="6" stroke-linecap="round"/></svg>';
-const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["orcamentos", "Orçamentos"], ["relatorios", "Relatórios"], ["categorias", "Categorias"], ["dilcar", "Dilcar Eventos"], ["config", "Ajustes"]];
+const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["orcamentos", "Orçamentos"], ["relatorios", "Relatórios"], ["categorias", "Categorias"], ["energia", "Energia"], ["dilcar", "Dilcar Eventos"], ["config", "Ajustes"]];
 const EMOJIS = ["🍽️","🛒","🏠","🚗","⛽","💊","🎓","🎮","👨‍👩‍👧","👕","✈️","📱","💡","🐶","🎁","💼","💰","🛍️","📅","🏋️","☕","🧾","📦","➕"];
 const GRUPOS_EV = ["Buffet", "Bebidas", "Decoração", "Equipe", "Som e luz", "Locação", "Transporte", "Outros"];
 const PALETA = ["#4a9be0", "#f5b335", "#e0564a", "#7e57c2", "#2f8f83", "#f29a38", "#3f51b5", "#26a69a", "#e57373", "#78909c"];
@@ -76,7 +77,7 @@ function demoStore() {
   return {
     async add(col, o) { const id = uid(); D[col].push({ ...o, id }); render(); return id; },
     async addMany(col, arr) { arr.forEach(o => D[col].push({ ...o, id: uid() })); render(); },
-    async set(col, id, o) { const i = D[col].findIndex(x => x.id === id); if (i >= 0) D[col][i] = { ...o, id }; render(); },
+    async set(col, id, o) { const i = D[col].findIndex(x => x.id === id); if (i >= 0) D[col][i] = { ...o, id }; else D[col].push({ ...o, id }); render(); },
     async del(col, ids) { ids = [].concat(ids); D[col] = D[col].filter(x => !ids.includes(x.id)); render(); }
   };
 }
@@ -138,6 +139,8 @@ function semearDemo() {
     M("p1", "gasto", "Carnes", 2100, dataNoMes(m, 8), "Buffet", "Carnes"), M("p1", "gasto", "Bebidas", 1350, dataNoMes(m, 9), "Bebidas", "Refrigerante e água"), M("p1", "gasto", "Flores", 1800, dataNoMes(m, 3), "Decoração", "Flores"),
     M("p1", "gasto", "Toalhas e sousplat", 650, dataNoMes(ant, 28), "Decoração", "Locação de peças"), M("p1", "gasto", "Garçons", 1200, dataNoMes(m, 11), "Equipe", "Garçons"), M("p1", "gasto", "Sobremesas", 900, dataNoMes(m, 10), "Buffet", "Doces"),
     M("p2", "recebimento", "Pagamento integral", 9000, dataNoMes(ant, 15)), M("p2", "gasto", "Buffet completo", 4200, dataNoMes(ant, 18), "Buffet", "Salgados"), M("p2", "gasto", "DJ", 1500, dataNoMes(ant, 20), "Som e luz", "DJ")];
+  D.energia = [[addMes(m, -2), 310, 420, 780, 668], [addMes(m, -1), 355, 380, 735, 712], [m, 402, 301, 690, 795]].map(([mes, consumido, injetado, gerado, medidor]) => ({ id: mes, mes, consumido, injetado, gerado, medidor, valor: 0, creditoFatura: "" }));
+  D.config = [{ id: "energia", creditoInicial: 150 }];
   D.orcamentos = [{ id: id(), categoriaId: c("Mercado"), valor: 900 }, { id: id(), categoriaId: c("Alimentação"), valor: 300 }, { id: id(), categoriaId: c("Lazer"), valor: 200 }];
 }
 
@@ -444,6 +447,71 @@ V.categorias = () => {
   return `<div class="tools"><h2 style="flex:1">Categorias</h2><button class="btn" data-act="editCat">Nova categoria</button></div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">${bloco("despesa", "Despesas")}${bloco("receita", "Receitas")}</div>`;
 };
+/* ---------- Energia (Equatorial + solar) ---------- */
+const kwh = v => (Math.abs(v) < 0.005 ? 0 : v).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " kWh";
+const numE = v => v === "" || v == null ? null : parseMoney(v);
+// Para cada mês: solar usado na hora = gerado − injetado; consumo da casa = rede + solar usado na hora;
+// créditos do mês = injetado − consumido da rede; estoque = soma acumulada (nunca abaixo de zero)
+function energiaCalc() {
+  let estoque = Number(by("config", "energia")?.creditoInicial) || 0;
+  return [...S.data.energia].sort((a, b) => a.mes.localeCompare(b.mes)).map(e => {
+    const cons = e.consumido || 0, inj = e.injetado || 0, ger = e.gerado || 0, direto = r2(ger - inj), casa = r2(cons + direto), saldoMes = r2(inj - cons), antes = estoque;
+    const usados = saldoMes < 0 ? Math.min(antes, -saldoMes) : 0, pagar = saldoMes < 0 ? r2(-saldoMes - usados) : 0;
+    estoque = r2(Math.max(0, antes + saldoMes));
+    const informado = e.creditoFatura !== "" && e.creditoFatura != null; if (informado) estoque = Number(e.creditoFatura) || 0;
+    return { e, cons, inj, ger, direto, casa, saldoMes, usados: r2(usados), pagar, estoque, informado, med: e.medidor || 0, dif: e.medidor ? r2(e.medidor - casa) : null,
+      pAuto: ger > 0 ? direto / ger * 100 : 0, pSolar: casa > 0 ? direto / casa * 100 : 0 };
+  });
+}
+function graficoEnergia(rows) {
+  const d = rows.slice(-12); if (!d.length) return '<div class="empty">Sem dados ainda.</div>';
+  const max = Math.max(...d.map(x => Math.max(x.ger, x.cons, x.inj, x.casa)), 1), W = 360, H = 180, base = H - 24, slot = (W - 16) / d.length, bw = Math.min(14, slot / 4 - 2), h = v => v / max * (base - 14);
+  const sr = [["ger", "#f5b335", "Gerado"], ["direto", "#2e9e5b", "Solar usado na hora"], ["inj", "#4a9be0", "Injetado"], ["cons", "#d9483b", "Consumido da rede"]];
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:640px;display:block;margin:0 auto"><line x1="6" y1="${base}" x2="${W - 6}" y2="${base}" stroke="currentColor" opacity=".2"/>
+  ${d.map((x, i) => { const x0 = 8 + slot * i + (slot - (bw + 2) * 4) / 2; return sr.map(([k, cor, n], j) => `<rect x="${x0 + j * (bw + 2)}" y="${base - h(Math.max(0, x[k]))}" width="${bw}" height="${h(Math.max(0, x[k]))}" rx="3" fill="${cor}"><title>${n}: ${kwh(x[k])}</title></rect>`).join("") + `<text x="${8 + slot * i + slot / 2}" y="${H - 8}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${x.e.mes.slice(5)}/${x.e.mes.slice(2, 4)}</text>`; }).join("")}</svg>
+  <div class="sum" style="margin-top:4px">${sr.map(([, cor, n]) => `<span><i class="lg" style="background:${cor}"></i>${n}</span>`).join("")}</div>`;
+}
+V.energia = () => {
+  const rows = energiaCalc(), x = rows.find(r => r.e.mes === S.mes), mes = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`, ini = Number(by("config", "energia")?.creditoInicial) || 0;
+  const ant = [...rows].reverse().find(r => r.e.mes < S.mes), estoqueAtual = x ? x.estoque : ant ? ant.estoque : ini;
+  const box = (cor, sym, v, lbl, c = "", extra = "") => `<div class="card stat"><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${v}</div><small>${lbl}</small>${extra}</div></div>`;
+  return `<div class="tools"><h2 style="flex:1">Energia</h2><button class="btn" data-act="editEnergia" data-id="${x ? x.e.id : ""}">${x ? "Editar " : "Lançar "}${mes.toLowerCase()}</button><button class="btn ghost" data-act="energiaIni">Créditos iniciais</button></div>
+  ${x ? `<div class="stats s5" style="margin-bottom:14px">
+    ${box("#f5b335", "☀", kwh(x.ger), "Gerado (Solplanet)")}
+    ${box("#2e9e5b", "⚡", kwh(x.direto), "Solar usado na hora", x.direto < 0 ? "neg" : "pos", `<span class="chip">${x.pAuto.toFixed(0)}% do que foi gerado</span>`)}
+    ${box("#4a9be0", "↗", kwh(x.inj), "Injetado na Equatorial")}
+    ${box("#d9483b", "↘", kwh(x.cons), "Consumido da Equatorial")}
+    ${box("#7e57c2", "🏠", kwh(x.casa), "Consumo da casa (calculado)", "", `<span class="chip">${x.pSolar.toFixed(0)}% veio do solar</span>`)}
+    ${box(x.saldoMes >= 0 ? "#2e9e5b" : "#f29a38", "±", (x.saldoMes >= 0 ? "+" : "−") + kwh(Math.abs(x.saldoMes)), x.saldoMes >= 0 ? "Créditos adicionados no mês" : "Faltou no mês (injetado − consumido)", x.saldoMes >= 0 ? "pos" : "neg", x.saldoMes < 0 ? `<span class="chip">usou ${kwh(x.usados)} do estoque${x.pagar > 0 ? " · " + kwh(x.pagar) + " sem crédito" : ""}</span>` : "")}
+    ${box("#3b7ddd", "🔋", kwh(x.estoque), "Estoque de créditos na Equatorial", "", x.informado ? '<span class="chip">valor informado da fatura</span>' : "")}
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start;margin-bottom:14px">
+    <div class="card"><h3>Conferência com o medidor privado</h3>${x.med ? `<div class="leg"><div style="border:0"><span>Medidor privado (energia que passou para a casa)</span><b>${kwh(x.med)}</b></div><div><span>Calculado: rede (${kwh(x.cons)}) + solar usado na hora (${kwh(x.direto)})</span><b>${kwh(x.casa)}</b></div>
+      <div><span>Diferença (medidor − calculado)</span><b class="${Math.abs(x.dif) > Math.max(5, x.casa * 0.03) ? "neg" : "pos"}">${x.dif >= 0 ? "+" : "−"}${kwh(Math.abs(x.dif))}${x.casa ? ` (${(x.dif / x.casa * 100).toFixed(1).replace(".", ",")}%)` : ""}</b></div>
+      <div><span>Solar usado na hora segundo o medidor (medidor − rede)</span><b>${kwh(r2(x.med - x.cons))}</b></div></div>
+      <div class="sum" style="justify-content:flex-start">${Math.abs(x.dif) > Math.max(5, x.casa * 0.03) ? "A diferença passou de 3%. Pode ser data de leitura diferente entre a Equatorial, o inversor e o medidor, ou erro de medição." : "As medições batem (diferença de até 3%)."}</div>` : '<div class="empty">Informe a leitura do medidor privado para comparar.</div>'}</div>
+    <div class="card"><h3>Como é calculado</h3><div class="leg"><div style="border:0"><span>Solar usado na hora</span><b>gerado − injetado</b></div><div><span>Consumo da casa</span><b>consumido da rede + solar usado na hora</b></div><div><span>Créditos do mês</span><b>injetado − consumido da rede</b></div><div><span>Estoque</span><b>estoque anterior + créditos do mês</b></div></div></div>
+  </div>` : `<div class="card empty" style="margin-bottom:14px">Nenhum dado lançado para ${mes.toLowerCase()}. Estoque de créditos até aqui: <b>${kwh(estoqueAtual)}</b>.</div>`}
+  <div class="card" style="margin-bottom:14px"><h3>Últimos meses</h3>${graficoEnergia(rows)}</div>
+  <div class="card"><h3>Histórico</h3>${rows.length ? `<div style="overflow:auto"><table><thead><tr><th>Mês</th><th>Gerado</th><th>Usado na hora</th><th>Injetado</th><th>Consumido rede</th><th>Casa (calc.)</th><th>Medidor</th><th>Diferença</th><th>Créditos do mês</th><th>Estoque</th></tr></thead><tbody>
+    ${[...rows].reverse().map(r => `<tr class="click" data-act="editEnergia" data-id="${r.e.id}"><td>${r.e.mes.slice(5)}/${r.e.mes.slice(0, 4)}</td><td>${kwh(r.ger)}</td><td>${kwh(r.direto)}</td><td>${kwh(r.inj)}</td><td>${kwh(r.cons)}</td><td>${kwh(r.casa)}</td><td>${r.med ? kwh(r.med) : "—"}</td><td>${r.dif == null ? "—" : (r.dif >= 0 ? "+" : "−") + kwh(Math.abs(r.dif))}</td><td class="${cls(r.saldoMes)}">${(r.saldoMes >= 0 ? "+" : "−") + kwh(Math.abs(r.saldoMes))}</td><td class="b">${kwh(r.estoque)}${r.informado ? " *" : ""}</td></tr>`).join("")}</tbody></table></div>
+    <div class="sum">* estoque informado por você a partir da fatura. Créditos iniciais considerados: ${kwh(ini)}.</div>` : '<div class="empty">Toque em "Lançar" para registrar o primeiro mês.</div>'}</div>`;
+};
+function formEnergia(id) {
+  const o = by("energia", id), n = v => v ? moneyIn(v) : "";
+  openForm({ title: o ? "Editar mês de energia" : "Lançar mês de energia",
+    values: o ? { mes: o.mes, consumido: n(o.consumido), injetado: n(o.injetado), gerado: n(o.gerado), medidor: n(o.medidor), creditoFatura: o.creditoFatura === "" || o.creditoFatura == null ? "" : moneyIn(o.creditoFatura) || "0", valor: n(o.valor) } : { mes: S.mes },
+    fields: [{ k: "mes", label: "Mês de referência", type: "month" }, { k: "consumido", label: "Equatorial — energia consumida da rede (kWh)", type: "money" }, { k: "injetado", label: "Equatorial — energia injetada na rede (kWh)", type: "money" },
+      { k: "gerado", label: "Solplanet — energia gerada no mês (kWh)", type: "money" }, { k: "medidor", label: "Medidor privado — energia que passou para a casa (kWh)", type: "money" },
+      { k: "creditoFatura", label: "Saldo de créditos que veio na fatura (kWh) — opcional", type: "money" }, { k: "valor", label: "Valor da conta (R$) — opcional", type: "money" }],
+    onSave: async v => { if (!/^\d{4}-\d{2}$/.test(v.mes || "")) { toast("Informe o mês no formato AAAA-MM."); return false; }
+      const outro = S.data.energia.find(e => e.mes === v.mes && e.id !== o?.id); if (outro) { toast("Esse mês já foi lançado. Toque nele no histórico para editar."); return false; }
+      const d = { mes: v.mes, consumido: parseMoney(v.consumido), injetado: parseMoney(v.injetado), gerado: parseMoney(v.gerado), medidor: parseMoney(v.medidor), creditoFatura: String(v.creditoFatura ?? "").trim() === "" ? "" : parseMoney(v.creditoFatura), valor: parseMoney(v.valor) };
+      if (d.injetado > d.gerado && d.gerado > 0) toast("Atenção: o injetado está maior que o gerado. Confira os números.");
+      o ? await store.set("energia", o.id, d) : await store.add("energia", d); },
+    onDelete: o ? () => store.del("energia", o.id) : null });
+}
+
 /* ---------- Dilcar Eventos (separado das finanças pessoais) ---------- */
 const movs = pid => S.data.movProjeto.filter(x => x.projetoId === pid);
 const resumoProj = p => { const ms = movs(p.id), rec = total(ms.filter(x => x.tipo === "recebimento")), gas = total(ms.filter(x => x.tipo === "gasto")); return { rec, gas, lucro: r2(rec - gas), falta: r2((p.valor || 0) - rec) }; };
@@ -511,7 +579,7 @@ function draw() {
   }
   $("#mlbl").textContent = S.view === "inicio" && S.per !== "mes" ? periodo().label.replace("Ano de ", "") : `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
   const pendHoje = fixasMes(ymOf(hoje())).some(x => x.pend);
-  $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" || k === "dilcar" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}</button>`).join("");
+  $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" || k === "energia" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}</button>`).join("");
   const b = (k, n) => `<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}">${ico(k === "config" ? "mais" : k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}<span>${n}</span></button>`;
   $("#bot").innerHTML = b("inicio", "Início") + b("lancamentos", "Lançam.") + '<button class="fab" data-act="novo" aria-label="Novo lançamento">+</button>' + b("cartoes", "Cartões") + b("config", "Mais");
   const main = $("#main"), top = main.scrollTop;
@@ -669,7 +737,10 @@ const A = {
   per: d => { S.per = d.v; if (ymOf(S.ref) !== S.mes) S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; try { localStorage.setItem("mf-per", S.per); } catch (e) {} render(); },
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
-  novo: d => S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa),
+  novo: d => S.view === "energia" ? formEnergia(S.data.energia.find(e => e.mes === S.mes)?.id) : S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa),
+  editEnergia: d => formEnergia(d.id),
+  energiaIni: () => openForm({ title: "Créditos iniciais na Equatorial", values: { v: moneyIn(Number(by("config", "energia")?.creditoInicial) || 0) }, fields: [{ k: "v", label: "Saldo de créditos antes do primeiro mês lançado (kWh)", type: "money" }],
+    onSave: v => store.set("config", "energia", { ...(by("config", "energia") || {}), creditoInicial: parseMoney(v.v) }) }),
   editL: d => { const l = by("lancamentos", d.id); l?.emprestimo ? formEmprestimo(l.pessoaId, l.id) : formLanc(l); },
   emprestar: d => formEmprestimo(d.id),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
