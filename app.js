@@ -127,6 +127,7 @@ function semearDemo() {
   D.pessoas = [{ id: "m", nome: "Mãe", cor: "#e0564a", grupo: "familia" }, { id: "i", nome: "Irmão", cor: "#2f8f83", grupo: "familia" }, { id: "t", nome: "Tia", cor: "#7e57c2", grupo: "parentes" }, { id: "x", nome: "Amigo", cor: "#f29a38", grupo: "amigos" }];
   D.lancamentos.filter(l => ["Farmácia", "Supermercado"].includes(l.descricao)).forEach(l => l.pessoaId = "m");
   D.lancamentos.filter(l => ["Notebook 2/6", "Cinema"].includes(l.descricao)).forEach(l => l.pessoaId = "i");
+  D.lancamentos.forEach(l => { const sg = { Combustível: "Gasolina", Supermercado: "Compras do mês", Almoço: "Restaurante", Farmácia: "Remédios", Internet: "Internet", Energia: "Luz" }[l.descricao]; if (sg) l.subgrupo = sg; });
   D.fixas = [{ id: "fa", nome: "Água", dia: 10, categoriaId: c("Contas fixas"), contaId: "b" }, { id: "fl", nome: "Luz", dia: 22, categoriaId: c("Contas fixas"), contaId: "b" }, { id: "fi", nome: "Internet", dia: 8, categoriaId: c("Contas fixas"), contaId: "b" }];
   D.lancamentos.filter(l => ymOf(l.data) === m).forEach(l => { const f = { Energia: "fl", Internet: "fi" }[l.descricao]; if (f) Object.assign(l, { fixaId: f, mesRef: m, vencimento: l.data, descricao: f === "fl" ? "Luz" : l.descricao }); });
   D.projetos = [{ id: "p1", nome: "Casamento Ana e João", cliente: "Ana Souza", data: dataNoMes(addMes(m, 1), 12), valor: 18000, status: "andamento", cor: "#7e57c2" }, { id: "p2", nome: "Aniversário 15 anos", cliente: "Família Lima", data: dataNoMes(ant, 20), valor: 9000, status: "concluido", cor: "#f29a38" }];
@@ -257,7 +258,7 @@ const sub = l => {
   const onde = l.cartaoId ? by("cartoes", l.cartaoId)?.nome : by("contas", l.contaId)?.nome;
   if (l.tipo === "transferencia") return `${esc(onde || "?")} → ${esc(by("contas", l.contaDestinoId)?.nome || "?")}`;
   if (l.reembolso) return ["Pagamento recebido", onde].filter(Boolean).map(esc).join(" · ");
-  return [cat(l.categoriaId).nome, onde, by("pessoas", l.pessoaId)?.nome, l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
+  return [cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
 };
 const linha = l => {
   const c = l.tipo === "transferencia" ? { icone: "⇄", cor: "#5b6ee0" } : l.reembolso ? { icone: "↩", cor: by("pessoas", l.pessoaId)?.cor || "#2e9e5b" } : cat(l.categoriaId);
@@ -270,7 +271,7 @@ function listaLanc() {
   let arr = S.data.lancamentos.filter(l => ymOf(l.data) === S.mes);
   if (S.filtro === "pendentes") arr = arr.filter(l => !l.efetivada && !l.cartaoId);
   else if (S.filtro !== "todos") arr = arr.filter(l => l.tipo === S.filtro);
-  if (q) arr = arr.filter(l => (l.descricao + " " + cat(l.categoriaId).nome).toLowerCase().includes(q));
+  if (q) arr = arr.filter(l => (l.descricao + " " + cat(l.categoriaId).nome + " " + (l.subgrupo || "")).toLowerCase().includes(q));
   if (!arr.length) return '<div class="empty">Nenhum lançamento. Toque em + para adicionar.</div>';
   arr.sort((a, b) => b.data.localeCompare(a.data) || a.descricao.localeCompare(b.descricao));
   let h = "", d = "";
@@ -370,6 +371,9 @@ V.relatorios = () => {
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(290px,1fr))">
     <div class="card"><h3>Ranking de categorias</h3>${barras(rk)}</div>
     <div class="card"><h3>Evolução diária</h3>${arr.length ? diario(arr, cor) : '<div class="empty">Sem dados neste mês.</div>'}</div>
+    <div class="card"><h3>Grupos e subgrupos</h3>${rk.length ? rk.map(g => { const sm = new Map(); arr.filter(l => (l.categoriaId || "") === g.id).forEach(l => sm.set(l.subgrupo || "Geral", (sm.get(l.subgrupo || "Geral") || 0) + l.valor)); const subs = [...sm].sort((a, b) => b[1] - a[1]);
+      return `<div class="gr"><div class="gl"><i class="lg" style="background:${esc(g.c.cor)}"></i><b>${esc(g.c.icone + " " + g.c.nome)}</b><span>${g.p.toFixed(0)}%</span><b>${brl(g.v)}</b></div><div class="prog"><i style="width:${g.v / (rk[0].v || 1) * 100}%;background:${esc(g.c.cor)}"></i></div>
+      ${subs.length === 1 && subs[0][0] === "Geral" ? "" : subs.map(([n, v]) => `<div class="sg"><span>${esc(n)}</span><div class="prog"><i style="width:${v / (g.v || 1) * 100}%;background:${esc(g.c.cor)};opacity:.6"></i></div><span>${brl(v)}</span></div>`).join("")}</div>`; }).join("") : '<div class="empty">Sem dados neste mês.</div>'}</div>
     <div class="card"><h3>${S.aba === "despesa" ? "Despesas" : "Receitas"} por categoria</h3>${donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(total(arr)))}</div>
   </div>`;
 };
@@ -493,14 +497,15 @@ const optCats = t => S.data.categorias.filter(c => c.tipo === t).sort((a, b) => 
 function formLanc(orig, cartaoId, pessoaId) {
   if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
   const ed = !!orig, o = orig || {};
-  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", destino: o.contaDestinoId, efetivada: o.efetivada, repetir: "variavel", parcelas: 2 }
-    : { tipo: "despesa", descricao: "", valor: "", data: ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`, origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", efetivada: true, repetir: "variavel", parcelas: 2 };
+  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", subgrupo: o.subgrupo || "", destino: o.contaDestinoId, efetivada: o.efetivada, repetir: "variavel", parcelas: 2 }
+    : { tipo: "despesa", descricao: "", valor: "", data: ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`, origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", subgrupo: "", efetivada: true, repetir: "variavel", parcelas: 2 };
   openForm({
     title: ed ? "Editar lançamento" : "Novo lançamento", values,
     fields: [
       { k: "tipo", type: "seg", options: [["despesa", "Despesa"], ["receita", "Receita"], ["transferencia", "Transferência"]], when: () => !ed },
       { k: "descricao", label: "Descrição" }, { k: "valor", label: "Valor (R$)", type: "money" }, { k: "data", label: "Data", type: "date" },
-      { k: "categoriaId", label: "Categoria", type: "select", options: v => optCats(v.tipo), when: v => v.tipo !== "transferencia" && !o.reembolso },
+      { k: "categoriaId", label: "Categoria (grupo)", type: "select", redraw: true, options: v => optCats(v.tipo), when: v => v.tipo !== "transferencia" && !o.reembolso },
+      { k: "subgrupo", label: "Subgrupo (opcional — ex.: Gasolina, Farmácia)", list: v => [...new Set(S.data.lancamentos.filter(l => l.subgrupo && l.categoriaId === v.categoriaId).map(l => l.subgrupo))].sort((a, b) => a.localeCompare(b)), when: v => v.tipo !== "transferencia" && !o.reembolso },
       { k: "origem", label: "Pagar com", type: "select", redraw: true, options: () => [...optContas().map(([k, n]) => ["c:" + k, n]), ...S.data.cartoes.map(c => ["k:" + c.id, "💳 " + c.nome])], when: v => v.tipo === "despesa" },
       { k: "pessoaId", label: "Gasto de quem", type: "select", options: () => [["", "Eu"], ...[...S.data.pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).map(p => [p.id, p.nome])], when: v => v.tipo === "despesa" && S.data.pessoas.length > 0 },
       { k: "origem", label: "Conta", type: "select", options: () => optContas().map(([k, n]) => ["c:" + k, n]), when: v => v.tipo === "receita" },
@@ -516,7 +521,7 @@ function formLanc(orig, cartaoId, pessoaId) {
       const noCartao = v.tipo === "despesa" && v.origem.startsWith("k:"), id = v.origem.slice(2);
       if (v.tipo === "transferencia" && v.destino === id) { toast("Escolha contas diferentes."); return false; }
       const b = { tipo: v.tipo, descricao: v.descricao.trim() || (v.tipo === "transferencia" ? "Transferência" : cat(v.categoriaId).nome), valor, data: v.data,
-        categoriaId: v.tipo === "transferencia" || o.reembolso ? "" : v.categoriaId || "", contaId: noCartao ? "" : id, cartaoId: noCartao ? id : "", contaDestinoId: v.tipo === "transferencia" ? v.destino : "", pessoaId: v.tipo === "despesa" ? v.pessoaId || "" : o.reembolso ? o.pessoaId : "", efetivada: noCartao ? true : !!v.efetivada };
+        categoriaId: v.tipo === "transferencia" || o.reembolso ? "" : v.categoriaId || "", subgrupo: v.tipo === "transferencia" || o.reembolso ? "" : (v.subgrupo || "").trim(), contaId: noCartao ? "" : id, cartaoId: noCartao ? id : "", contaDestinoId: v.tipo === "transferencia" ? v.destino : "", pessoaId: v.tipo === "despesa" ? v.pessoaId || "" : o.reembolso ? o.pessoaId : "", efetivada: noCartao ? true : !!v.efetivada };
       if (ed) return void await store.set("lancamentos", o.id, { ...o, ...b });
       const rep = v.tipo === "transferencia" ? "variavel" : v.repetir;
       if (rep === "variavel") return void await store.add("lancamentos", { ...b, recorrencia: "variavel" });
@@ -584,8 +589,8 @@ const formOrc = crud("orcamentos", "oorçamento", [{ k: "categoriaId", label: "C
 
 function exportarCSV() {
   const q = s => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const linhas = [["Data", "Tipo", "Descrição", "Categoria", "Conta/Cartão", "Destino", "Pessoa", "Valor", "Efetivada"].join(";"), ...[...S.data.lancamentos].sort((a, b) => a.data.localeCompare(b.data)).map(l =>
-    [dataBR(l.data), l.tipo, q(l.descricao), q(l.tipo === "transferencia" ? "" : cat(l.categoriaId).nome), q(l.cartaoId ? by("cartoes", l.cartaoId)?.nome : by("contas", l.contaId)?.nome), q(by("contas", l.contaDestinoId)?.nome || ""), q(l.tipo === "despesa" ? by("pessoas", l.pessoaId)?.nome || "Eu" : ""), l.valor.toFixed(2).replace(".", ","), l.efetivada ? "sim" : "não"].join(";"))];
+  const linhas = [["Data", "Tipo", "Descrição", "Categoria", "Subgrupo", "Conta/Cartão", "Destino", "Pessoa", "Valor", "Efetivada"].join(";"), ...[...S.data.lancamentos].sort((a, b) => a.data.localeCompare(b.data)).map(l =>
+    [dataBR(l.data), l.tipo, q(l.descricao), q(l.tipo === "transferencia" ? "" : cat(l.categoriaId).nome), q(l.subgrupo || ""), q(l.cartaoId ? by("cartoes", l.cartaoId)?.nome : by("contas", l.contaId)?.nome), q(by("contas", l.contaDestinoId)?.nome || ""), q(l.tipo === "despesa" ? by("pessoas", l.pessoaId)?.nome || "Eu" : ""), l.valor.toFixed(2).replace(".", ","), l.efetivada ? "sim" : "não"].join(";"))];
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + linhas.join("\n")], { type: "text/csv" })); a.download = "lancamentos.csv"; a.click();
 }
 
