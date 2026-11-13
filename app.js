@@ -8,7 +8,7 @@ const firebaseConfig = {
   appId: "1:986463923028:web:741ca828cfba9bba4bf6c1"
 };
 const FB = "https://www.gstatic.com/firebasejs/10.14.1/";
-const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos"];
+const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas"];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
 /* ---------- utilidades ---------- */
@@ -34,6 +34,7 @@ const I = {
   lancamentos: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
   contas: '<path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
   cartoes: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/>',
+  pessoas: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.900 1.900 6.500 5.500M16 4.800a3.500 3.500 0 0 1 0 6.400M18.500 14.800c1.700.800 2.700 2.500 3 5.200"/>',
   orcamentos: '<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
   relatorios: '<circle cx="12" cy="12" r="9"/><path d="M12 3v9h9"/>',
   categorias: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>',
@@ -42,7 +43,7 @@ const I = {
 };
 const ico = n => `<svg class="ico" viewBox="0 0 24 24">${I[n]}</svg>`;
 const LOGO = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#3b7ddd" stroke-width="6"/><path d="M16 5a11 11 0 0 1 9.5 16.5" fill="none" stroke="#2e9e5b" stroke-width="6" stroke-linecap="round"/></svg>';
-const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["orcamentos", "Orçamentos"], ["relatorios", "Relatórios"], ["categorias", "Categorias"], ["config", "Ajustes"]];
+const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["orcamentos", "Orçamentos"], ["relatorios", "Relatórios"], ["categorias", "Categorias"], ["config", "Ajustes"]];
 const EMOJIS = ["🍽️","🛒","🏠","🚗","⛽","💊","🎓","🎮","👨‍👩‍👧","👕","✈️","📱","💡","🐶","🎁","💼","💰","🛍️","📅","🏋️","☕","🧾","📦","➕"];
 const CATS_PADRAO = [
   ["Alimentação","🍽️","#f5b335","despesa"],["Mercado","🛒","#f29a38","despesa"],["Moradia","🏠","#7e57c2","despesa"],["Carro","🚗","#e0564a","despesa"],
@@ -118,6 +119,9 @@ function semearDemo() {
     { ...L("despesa", "Supermercado", 890, 14, "Mercado"), data: dataNoMes(ant, 14) },
     { id: id(), tipo: "despesa", descricao: "Restaurante", valor: 142, data: dataNoMes(ant, 25), categoriaId: c("Alimentação"), contaId: "", cartaoId: "k", efetivada: true, recorrencia: "variavel" }
   ];
+  D.pessoas = [{ id: "m", nome: "Mãe", cor: "#e0564a" }, { id: "i", nome: "Irmão", cor: "#2f8f83" }];
+  D.lancamentos.filter(l => ["Farmácia", "Supermercado"].includes(l.descricao)).forEach(l => l.pessoaId = "m");
+  D.lancamentos.filter(l => ["Notebook 2/6", "Cinema"].includes(l.descricao)).forEach(l => l.pessoaId = "i");
   D.orcamentos = [{ id: id(), categoriaId: c("Mercado"), valor: 900 }, { id: id(), categoriaId: c("Alimentação"), valor: 300 }, { id: id(), categoriaId: c("Lazer"), valor: 200 }];
 }
 
@@ -237,7 +241,7 @@ V.contas = () => `<div class="tools"><h2 style="flex:1">Contas</h2><button class
 const sub = l => {
   const onde = l.cartaoId ? by("cartoes", l.cartaoId)?.nome : by("contas", l.contaId)?.nome;
   if (l.tipo === "transferencia") return `${esc(onde || "?")} → ${esc(by("contas", l.contaDestinoId)?.nome || "?")}`;
-  return [cat(l.categoriaId).nome, onde, l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
+  return [cat(l.categoriaId).nome, onde, by("pessoas", l.pessoaId)?.nome, l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
 };
 const linha = l => {
   const c = l.tipo === "transferencia" ? { icone: "⇄", cor: "#5b6ee0" } : cat(l.categoriaId);
@@ -280,6 +284,22 @@ V.cartoes = () => {
   ${cs.length ? `<div class="grid cc">${cards}</div><div class="sum"><span>Limite disponível: <b>${brl(disp)}</b></span><span>Total de faturas no mês: <b>${brl(fat)}</b></span></div>` : '<div class="card empty">Nenhum cartão cadastrado.</div>'}`;
 };
 
+const gastosDe = pid => doMes("despesa").filter(l => l.pessoaId === pid);
+V.pessoas = () => {
+  const ps = [...S.data.pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), tudo = total(doMes("despesa")) || 1, validos = new Set(ps.map(p => p.id));
+  const card = (p, arr) => { const t = total(arr), kc = total(arr.filter(l => l.cartaoId));
+    return `<div class="card pcard" data-act="verPessoa" data-id="${p.id}"><div class="hd">${av(ini(p.nome), p.cor)}<div class="tx"><b>${esc(p.nome)}</b><small>${arr.length} ${arr.length === 1 ? "despesa" : "despesas"} no mês</small></div>
+      <button class="link" data-act="novo" data-pessoa="${p.id}" title="Nova despesa">＋</button>${p.id ? `<button data-act="editPessoa" data-id="${p.id}" title="Editar">${ico("mais")}</button>` : ""}</div>
+      <div class="fat"><span>Gasto em ${MESES[Number(S.mes.slice(5)) - 1].toLowerCase()}</span><b class="${t > 0 ? "neg" : ""}">${brl(t)}</b></div>
+      <div class="prog" style="margin-top:10px"><i style="width:${Math.min(100, t / tudo * 100)}%;background:${esc(p.cor)}"></i></div>
+      <div class="tri" style="margin-top:12px"><div><small>No cartão</small>${brl(kc)}</div><div><small>Em conta</small>${brl(r2(t - kc))}</div><div><small>Do total</small>${(t / tudo * 100).toFixed(0)}%</div></div></div>`; };
+  const meus = doMes("despesa").filter(l => !validos.has(l.pessoaId));
+  const outros = r2(ps.reduce((s0, p) => s0 + total(gastosDe(p.id)), 0));
+  return `<div class="tools"><h2 style="flex:1">Gastos por pessoa</h2><button class="btn" data-act="editPessoa">Nova pessoa</button></div>
+  <div class="grid cc">${card({ id: "", nome: "Eu", cor: "#3b7ddd" }, meus)}${ps.map(p => card(p, gastosDe(p.id))).join("")}</div>
+  <div class="sum"><span>Meus gastos: <b>${brl(total(meus))}</b></span><span>Gastos de outras pessoas: <b>${brl(outros)}</b></span></div>
+  ${ps.length ? "" : '<div class="sum">Cadastre as pessoas da casa e, em cada despesa, escolha de quem é o gasto.</div>'}`;
+};
 function orcLista(curto) {
   const desp = doMes("despesa"), os = S.data.orcamentos;
   if (!os.length) return '<div class="empty">Nenhum orçamento definido.</div>';
@@ -311,7 +331,7 @@ V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" s
   <div class="row" data-act="dark"><div class="tx">Tema escuro</div><span class="ck ${document.documentElement.classList.contains("dark") ? "on" : ""}">✓</span></div>
   <div class="row" data-act="csv"><div class="tx"><div>Exportar lançamentos (CSV)</div><small>Abre no Excel ou Google Planilhas</small></div></div>
   <div class="row" data-act="sair"><div class="tx"><div class="neg">Sair</div><small>${esc(S.demo ? "Modo demonstração — nada é salvo" : S.user?.email || "")}</small></div></div></div>
-  <div class="sum" style="justify-content:flex-start;max-width:520px">${NAV.slice(2, 7).map(([k, n]) => `<button class="pill" data-act="nav" data-v="${k}">${n}</button>`).join("")}</div>`;
+  <div class="sum" style="justify-content:flex-start;max-width:520px">${NAV.slice(2, -1).map(([k, n]) => `<button class="pill" data-act="nav" data-v="${k}">${n}</button>`).join("")}</div>`;
 
 /* ---------- desenho ---------- */
 function draw() {
@@ -324,7 +344,7 @@ function draw() {
       <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="modal"></div>`;
   }
   $("#mlbl").textContent = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
-  $("#side").innerHTML = NAV.map(([k, n], i) => `${i === 7 ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}</button>`).join("");
+  $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}</button>`).join("");
   const b = (k, n) => `<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}">${ico(k === "config" ? "mais" : k)}<span>${n}</span></button>`;
   $("#bot").innerHTML = b("inicio", "Início") + b("lancamentos", "Lançam.") + '<button class="fab" data-act="novo" aria-label="Novo lançamento">+</button>' + b("cartoes", "Cartões") + b("config", "Mais");
   const main = $("#main"), top = main.scrollTop;
@@ -368,11 +388,11 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
 const optContas = () => contasOrd().map(c => [c.id, c.nome]);
 const optCats = t => S.data.categorias.filter(c => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome)).map(c => [c.id, `${c.icone} ${c.nome}`]);
 
-function formLanc(orig, cartaoId) {
+function formLanc(orig, cartaoId, pessoaId) {
   if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
   const ed = !!orig, o = orig || {};
-  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, destino: o.contaDestinoId, efetivada: o.efetivada, repetir: "variavel", parcelas: 2 }
-    : { tipo: "despesa", descricao: "", valor: "", data: ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`, origem: cartaoId ? "k:" + cartaoId : "c:" + S.data.contas[0].id, efetivada: true, repetir: "variavel", parcelas: 2 };
+  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", destino: o.contaDestinoId, efetivada: o.efetivada, repetir: "variavel", parcelas: 2 }
+    : { tipo: "despesa", descricao: "", valor: "", data: ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`, origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", efetivada: true, repetir: "variavel", parcelas: 2 };
   openForm({
     title: ed ? "Editar lançamento" : "Novo lançamento", values,
     fields: [
@@ -380,6 +400,7 @@ function formLanc(orig, cartaoId) {
       { k: "descricao", label: "Descrição" }, { k: "valor", label: "Valor (R$)", type: "money" }, { k: "data", label: "Data", type: "date" },
       { k: "categoriaId", label: "Categoria", type: "select", options: v => optCats(v.tipo), when: v => v.tipo !== "transferencia" },
       { k: "origem", label: "Pagar com", type: "select", redraw: true, options: () => [...optContas().map(([k, n]) => ["c:" + k, n]), ...S.data.cartoes.map(c => ["k:" + c.id, "💳 " + c.nome])], when: v => v.tipo === "despesa" },
+      { k: "pessoaId", label: "Gasto de quem", type: "select", options: () => [["", "Eu"], ...[...S.data.pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).map(p => [p.id, p.nome])], when: v => v.tipo === "despesa" && S.data.pessoas.length > 0 },
       { k: "origem", label: "Conta", type: "select", options: () => optContas().map(([k, n]) => ["c:" + k, n]), when: v => v.tipo === "receita" },
       { k: "origem", label: "Conta de origem", type: "select", options: () => optContas().map(([k, n]) => ["c:" + k, n]), when: v => v.tipo === "transferencia" },
       { k: "destino", label: "Conta de destino", type: "select", options: optContas, when: v => v.tipo === "transferencia" },
@@ -393,7 +414,7 @@ function formLanc(orig, cartaoId) {
       const noCartao = v.tipo === "despesa" && v.origem.startsWith("k:"), id = v.origem.slice(2);
       if (v.tipo === "transferencia" && v.destino === id) { toast("Escolha contas diferentes."); return false; }
       const b = { tipo: v.tipo, descricao: v.descricao.trim() || (v.tipo === "transferencia" ? "Transferência" : cat(v.categoriaId).nome), valor, data: v.data,
-        categoriaId: v.tipo === "transferencia" ? "" : v.categoriaId || "", contaId: noCartao ? "" : id, cartaoId: noCartao ? id : "", contaDestinoId: v.tipo === "transferencia" ? v.destino : "", efetivada: noCartao ? true : !!v.efetivada };
+        categoriaId: v.tipo === "transferencia" ? "" : v.categoriaId || "", contaId: noCartao ? "" : id, cartaoId: noCartao ? id : "", contaDestinoId: v.tipo === "transferencia" ? v.destino : "", pessoaId: v.tipo === "despesa" ? v.pessoaId || "" : "", efetivada: noCartao ? true : !!v.efetivada };
       if (ed) return void await store.set("lancamentos", o.id, { ...o, ...b });
       const rep = v.tipo === "transferencia" ? "variavel" : v.repetir;
       if (rep === "variavel") return void await store.add("lancamentos", { ...b, recorrencia: "variavel" });
@@ -423,13 +444,16 @@ const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", opti
   () => ({ tipo: "despesa", nome: "", icone: "📦", cor: "#4a9be0" }),
   { in: o => o, out: v => v.nome.trim() ? { tipo: v.tipo, nome: v.nome.trim(), icone: v.icone, cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.categoriaId === o.id) ? "Esta categoria tem lançamentos." : S.data.orcamentos.some(x => x.categoriaId === o.id) ? "Esta categoria tem orçamento." : "");
+const formPessoa = crud("pessoas", "apessoa", [{ k: "nome", label: "Nome" }, { k: "cor", label: "Cor", type: "color" }],
+  () => ({ nome: "", cor: "#e0564a" }), { in: o => o, out: v => v.nome.trim() ? { nome: v.nome.trim(), cor: v.cor } : (toast("Informe o nome."), null) },
+  o => S.data.lancamentos.some(l => l.pessoaId === o.id) ? "Esta pessoa tem despesas. Troque ou exclua as despesas antes." : "");
 const formOrc = crud("orcamentos", "oorçamento", [{ k: "categoriaId", label: "Categoria", type: "select", options: () => optCats("despesa") }, { k: "valor", label: "Limite mensal (R$)", type: "money" }],
   () => ({ valor: "" }), { in: o => ({ ...o, valor: moneyIn(o.valor) }), out: v => { const valor = parseMoney(v.valor); return valor > 0 && v.categoriaId ? { categoriaId: v.categoriaId, valor } : (toast("Informe categoria e valor."), null); } });
 
 function exportarCSV() {
   const q = s => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const linhas = [["Data", "Tipo", "Descrição", "Categoria", "Conta/Cartão", "Destino", "Valor", "Efetivada"].join(";"), ...[...S.data.lancamentos].sort((a, b) => a.data.localeCompare(b.data)).map(l =>
-    [dataBR(l.data), l.tipo, q(l.descricao), q(l.tipo === "transferencia" ? "" : cat(l.categoriaId).nome), q(l.cartaoId ? by("cartoes", l.cartaoId)?.nome : by("contas", l.contaId)?.nome), q(by("contas", l.contaDestinoId)?.nome || ""), l.valor.toFixed(2).replace(".", ","), l.efetivada ? "sim" : "não"].join(";"))];
+  const linhas = [["Data", "Tipo", "Descrição", "Categoria", "Conta/Cartão", "Destino", "Pessoa", "Valor", "Efetivada"].join(";"), ...[...S.data.lancamentos].sort((a, b) => a.data.localeCompare(b.data)).map(l =>
+    [dataBR(l.data), l.tipo, q(l.descricao), q(l.tipo === "transferencia" ? "" : cat(l.categoriaId).nome), q(l.cartaoId ? by("cartoes", l.cartaoId)?.nome : by("contas", l.contaId)?.nome), q(by("contas", l.contaDestinoId)?.nome || ""), q(l.tipo === "despesa" ? by("pessoas", l.pessoaId)?.nome || "Eu" : ""), l.valor.toFixed(2).replace(".", ","), l.efetivada ? "sim" : "não"].join(";"))];
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + linhas.join("\n")], { type: "text/csv" })); a.download = "lancamentos.csv"; a.click();
 }
 
@@ -439,16 +463,20 @@ const A = {
   mes: d => { S.mes = addMes(S.mes, Number(d.v)); render(); },
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
-  novo: d => formLanc(null, d.cartao),
+  novo: d => formLanc(null, d.cartao, d.pessoa),
   editL: d => formLanc(by("lancamentos", d.id)),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
-  editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editOrc: d => formOrc(d.id),
+  editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => formPessoa(d.id), editOrc: d => formOrc(d.id),
   pagar: d => { const c = by("cartoes", d.id), valor = fatTotal(c.id, S.mes);
     openForm({ title: `Pagar fatura — ${brl(valor)}`, values: { contaId: c.contaId, data: hoje() }, fields: [{ k: "contaId", label: "Pagar com a conta", type: "select", options: optContas }, { k: "data", label: "Data do pagamento", type: "date" }],
       onSave: v => store.set("cartoes", c.id, { ...c, pagas: { ...(c.pagas || {}), [S.mes]: { contaId: v.contaId, data: v.data || hoje(), valor } } }) }); },
   reabrir: d => { const c = by("cartoes", d.id), pagas = { ...(c.pagas || {}) }; delete pagas[S.mes]; store.set("cartoes", c.id, { ...c, pagas }); },
   verFatura: d => { const it = fatItens(d.id, S.mes).sort((a, b) => a.data.localeCompare(b.data));
     $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>Fatura — ${esc(by("cartoes", d.id).nome)}</h2>${it.map(l => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${sub(l)}</small></div><b>${brl(l.valor)}</b></div>`).join("") || '<div class="empty">Nenhuma despesa nesta fatura.</div>'}
+    <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
+  verPessoa: d => { const validos = new Set(S.data.pessoas.map(p => p.id)), p = by("pessoas", d.id);
+    const it = doMes("despesa").filter(l => p ? l.pessoaId === p.id : !validos.has(l.pessoaId)).sort((a, b) => a.data.localeCompare(b.data));
+    $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>${esc(p ? p.nome : "Eu")} — ${brl(total(it))}</h2>${it.map(l => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${sub(l)}</small></div><b>${brl(l.valor)}</b></div>`).join("") || '<div class="empty">Nenhuma despesa neste mês.</div>'}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) $("#modal").innerHTML = ""; },
   dark: () => { const on = document.documentElement.classList.toggle("dark"); try { localStorage.setItem("mf-dark", on ? "1" : "0"); } catch (e) {} render(); },
