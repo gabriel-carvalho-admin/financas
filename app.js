@@ -8,7 +8,7 @@ const firebaseConfig = {
   appId: "1:986463923028:web:741ca828cfba9bba4bf6c1"
 };
 const FB = "https://www.gstatic.com/firebasejs/10.14.1/";
-const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas", "fixas"];
+const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas", "fixas", "projetos", "movProjeto"];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
 /* ---------- utilidades ---------- */
@@ -39,12 +39,15 @@ const I = {
   relatorios: '<circle cx="12" cy="12" r="9"/><path d="M12 3v9h9"/>',
   categorias: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>',
   config: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+  dilcar: '<path d="M12 3l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6L3.4 9.4l6-.8z"/>',
   mais: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
 };
 const ico = n => `<svg class="ico" viewBox="0 0 24 24">${I[n]}</svg>`;
 const LOGO = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#3b7ddd" stroke-width="6"/><path d="M16 5a11 11 0 0 1 9.5 16.5" fill="none" stroke="#2e9e5b" stroke-width="6" stroke-linecap="round"/></svg>';
-const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["orcamentos", "Orçamentos"], ["relatorios", "Relatórios"], ["categorias", "Categorias"], ["config", "Ajustes"]];
+const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["orcamentos", "Orçamentos"], ["relatorios", "Relatórios"], ["categorias", "Categorias"], ["dilcar", "Dilcar Eventos"], ["config", "Ajustes"]];
 const EMOJIS = ["🍽️","🛒","🏠","🚗","⛽","💊","🎓","🎮","👨‍👩‍👧","👕","✈️","📱","💡","🐶","🎁","💼","💰","🛍️","📅","🏋️","☕","🧾","📦","➕"];
+const GRUPOS_EV = ["Buffet", "Bebidas", "Decoração", "Equipe", "Som e luz", "Locação", "Transporte", "Outros"];
+const PALETA = ["#4a9be0", "#f5b335", "#e0564a", "#7e57c2", "#2f8f83", "#f29a38", "#3f51b5", "#26a69a", "#e57373", "#78909c"];
 const GRUPOS = [["familia", "Família"], ["parentes", "Parentes"], ["amigos", "Amigos"]];
 const grupoDe = p => GRUPOS.some(([k]) => k === p.grupo) ? p.grupo : "familia";
 const CATS_PADRAO = [
@@ -55,7 +58,7 @@ const CATS_PADRAO = [
 ];
 
 /* ---------- estado ---------- */
-const S = { user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
+const S = { proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
   data: Object.fromEntries(COLS.map(c => [c, []])) };
 let store = null, fb = null, pend = false;
 const render = () => { if (pend) return; pend = true; requestAnimationFrame(() => { pend = false; draw(); }); };
@@ -126,6 +129,12 @@ function semearDemo() {
   D.lancamentos.filter(l => ["Notebook 2/6", "Cinema"].includes(l.descricao)).forEach(l => l.pessoaId = "i");
   D.fixas = [{ id: "fa", nome: "Água", dia: 10, categoriaId: c("Contas fixas"), contaId: "b" }, { id: "fl", nome: "Luz", dia: 22, categoriaId: c("Contas fixas"), contaId: "b" }, { id: "fi", nome: "Internet", dia: 8, categoriaId: c("Contas fixas"), contaId: "b" }];
   D.lancamentos.filter(l => ymOf(l.data) === m).forEach(l => { const f = { Energia: "fl", Internet: "fi" }[l.descricao]; if (f) Object.assign(l, { fixaId: f, mesRef: m, vencimento: l.data, descricao: f === "fl" ? "Luz" : l.descricao }); });
+  D.projetos = [{ id: "p1", nome: "Casamento Ana e João", cliente: "Ana Souza", data: dataNoMes(addMes(m, 1), 12), valor: 18000, status: "andamento", cor: "#7e57c2" }, { id: "p2", nome: "Aniversário 15 anos", cliente: "Família Lima", data: dataNoMes(ant, 20), valor: 9000, status: "concluido", cor: "#f29a38" }];
+  const M = (projetoId, tipo, descricao, valor, data, grupo = "", subgrupo = "") => ({ id: id(), projetoId, tipo, descricao, valor, data, grupo, subgrupo });
+  D.movProjeto = [M("p1", "recebimento", "Sinal (30%)", 5400, dataNoMes(ant, 10)), M("p1", "recebimento", "2ª parcela", 6000, dataNoMes(m, 5)),
+    M("p1", "gasto", "Carnes", 2100, dataNoMes(m, 8), "Buffet", "Carnes"), M("p1", "gasto", "Bebidas", 1350, dataNoMes(m, 9), "Bebidas", "Refrigerante e água"), M("p1", "gasto", "Flores", 1800, dataNoMes(m, 3), "Decoração", "Flores"),
+    M("p1", "gasto", "Toalhas e sousplat", 650, dataNoMes(ant, 28), "Decoração", "Locação de peças"), M("p1", "gasto", "Garçons", 1200, dataNoMes(m, 11), "Equipe", "Garçons"), M("p1", "gasto", "Sobremesas", 900, dataNoMes(m, 10), "Buffet", "Doces"),
+    M("p2", "recebimento", "Pagamento integral", 9000, dataNoMes(ant, 15)), M("p2", "gasto", "Buffet completo", 4200, dataNoMes(ant, 18), "Buffet", "Salgados"), M("p2", "gasto", "DJ", 1500, dataNoMes(ant, 20), "Som e luz", "DJ")];
   D.orcamentos = [{ id: id(), categoriaId: c("Mercado"), valor: 900 }, { id: id(), categoriaId: c("Alimentação"), valor: 300 }, { id: id(), categoriaId: c("Lazer"), valor: 200 }];
 }
 
@@ -369,6 +378,54 @@ V.categorias = () => {
   return `<div class="tools"><h2 style="flex:1">Categorias</h2><button class="btn" data-act="editCat">Nova categoria</button></div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">${bloco("despesa", "Despesas")}${bloco("receita", "Receitas")}</div>`;
 };
+/* ---------- Dilcar Eventos (separado das finanças pessoais) ---------- */
+const movs = pid => S.data.movProjeto.filter(x => x.projetoId === pid);
+const resumoProj = p => { const ms = movs(p.id), rec = total(ms.filter(x => x.tipo === "recebimento")), gas = total(ms.filter(x => x.tipo === "gasto")); return { rec, gas, lucro: r2(rec - gas), falta: r2((p.valor || 0) - rec) }; };
+const statBox = (cor, sym, v, lbl, c = "") => `<div class="card stat"><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small></div></div>`;
+function gruposDe(ms) {
+  const g = new Map();
+  ms.filter(x => x.tipo === "gasto").forEach(x => { const k = x.grupo || "Sem grupo", o = g.get(k) || { nome: k, v: 0, subs: new Map() }; o.v += x.valor; const sk = x.subgrupo || "Geral"; o.subs.set(sk, (o.subs.get(sk) || 0) + x.valor); g.set(k, o); });
+  return [...g.values()].sort((a, b) => b.v - a.v).map((o, i) => ({ ...o, v: r2(o.v), cor: PALETA[i % PALETA.length], subs: [...o.subs].map(([nome, v]) => ({ nome, v: r2(v) })).sort((a, b) => b.v - a.v) }));
+}
+function graficoMeses(ms) {
+  const meses = [...new Set(ms.map(x => ymOf(x.data)))].sort(); if (!meses.length) return '<div class="empty">Sem lançamentos ainda.</div>';
+  const d = meses.map(ym => ({ ym, r: total(ms.filter(x => x.tipo === "recebimento" && ymOf(x.data) === ym)), g: total(ms.filter(x => x.tipo === "gasto" && ymOf(x.data) === ym)) }));
+  const max = Math.max(...d.map(x => Math.max(x.r, x.g)), 1), W = 340, H = 170, base = H - 24, slot = (W - 20) / d.length, bw = Math.min(26, slot / 2 - 4), h = v => v / max * (base - 22);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="8" y1="${base}" x2="${W - 8}" y2="${base}" stroke="currentColor" opacity=".2"/>
+  ${d.map((x, i) => { const cx = 10 + slot * i + slot / 2, bar = (v, dx, cor) => v > 0 ? `<rect x="${cx + dx}" y="${base - h(v)}" width="${bw}" height="${h(v)}" rx="4" fill="${cor}"><title>${brl(v)}</title></rect><text x="${cx + dx + bw / 2}" y="${base - h(v) - 4}" font-size="7.5" text-anchor="middle" fill="currentColor" opacity=".7">${v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + " mil" : v.toFixed(0)}</text>` : "";
+    return bar(x.r, -bw - 2, "#2e9e5b") + bar(x.g, 2, "#d9483b") + `<text x="${cx}" y="${H - 8}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${x.ym.slice(5)}/${x.ym.slice(2, 4)}</text>`; }).join("")}</svg>
+  <div class="sum" style="margin-top:4px"><span><i class="lg" style="background:#2e9e5b"></i> Pagamentos recebidos</span><span><i class="lg" style="background:#d9483b"></i> Gastos</span></div>`;
+}
+function listaProjetos() {
+  const ps = [...S.data.projetos].sort((a, b) => (a.status === "concluido") - (b.status === "concluido") || (b.data || "").localeCompare(a.data || ""));
+  const R = ps.map(p => ({ p, ...resumoProj(p) })), T = k => r2(R.reduce((s0, x) => s0 + x[k], 0)), contr = r2(ps.reduce((s0, p) => s0 + (p.valor || 0), 0));
+  return `<div class="tools"><h2 style="flex:1">Dilcar Eventos</h2><button class="btn" data-act="editProj">Novo projeto</button></div>
+  <div class="stats" style="margin-bottom:14px">${statBox("#5b6ee0", "📋", contr, "Total contratado")}${statBox("#2e9e5b", "＋", T("rec"), "Pagamentos recebidos", "pos")}${statBox("#d9483b", "－", T("gas"), "Gastos dos projetos", "neg")}${statBox("#3b7ddd", "＝", T("lucro"), "Resultado (recebido − gastos)", cls(T("lucro")))}</div>
+  ${R.length ? `<div class="grid cc">${R.map(({ p, rec, gas, lucro, falta }) => `<div class="card pcard" data-act="abrirProj" data-id="${p.id}"><div class="hd">${av(ini(p.nome), p.cor)}<div class="tx"><b>${esc(p.nome)}</b><small>${[p.cliente, p.data ? dataBR(p.data) : ""].filter(Boolean).map(esc).join(" · ") || "Projeto"}</small></div><button data-act="editProj" data-id="${p.id}" title="Editar projeto">${ico("mais")}</button></div>
+    <div class="tri"><div><small>Contrato</small>${brl(p.valor || 0)}</div><div><small>Recebido</small><span class="pos">${brl(rec)}</span></div><div><small>Gastos</small><span class="neg">${brl(gas)}</span></div></div>
+    <div class="prog"><i style="width:${p.valor ? Math.min(100, rec / p.valor * 100) : 0}%;background:var(--ok)"></i></div>
+    <div class="dash-l"></div><div class="fat"><span>Resultado</span><b class="${cls(lucro)}">${brl(lucro)}</b></div>
+    <div class="ft"><span class="tag" style="background:${p.status === "concluido" ? "#2e9e5b" : "#3b7ddd"}">${p.status === "concluido" ? "Concluído" : "Em andamento"}</span><span class="mut">${falta > 0.005 ? "A receber " + brl(falta) : "Contrato quitado"}</span></div></div>`).join("")}</div>` : '<div class="card empty">Nenhum projeto ainda. Toque em "Novo projeto" para criar o primeiro evento.</div>'}
+  <div class="sum">O dinheiro dos projetos fica separado: não entra nas suas contas, no saldo nem nos relatórios pessoais.</div>`;
+}
+function paginaProjeto(p) {
+  const ms = movs(p.id), r = resumoProj(p), gs = gruposDe(ms), ord = (a, b) => b.data.localeCompare(a.data);
+  const li = (x, k) => `<div class="row" data-act="editMov" data-id="${x.id}"><div class="tx"><div>${esc(x.descricao)}</div><small>${dataBR(x.data)}${x.tipo === "gasto" ? " · " + esc([x.grupo || "Sem grupo", x.subgrupo].filter(Boolean).join(" › ")) : ""}</small></div><b class="${k}">${brl(x.valor)}</b></div>`;
+  const rec = ms.filter(x => x.tipo === "recebimento").sort(ord), gas = ms.filter(x => x.tipo === "gasto").sort(ord);
+  return `<div class="tools"><button class="pill" data-act="voltarProj">‹ Projetos</button><h2 style="flex:1;min-width:160px">${esc(p.nome)}</h2>
+    <button class="btn" style="background:var(--ok)" data-act="novoMov" data-tipo="recebimento">+ Pagamento</button><button class="btn" style="background:var(--bad)" data-act="novoMov" data-tipo="gasto">+ Gasto</button><button class="btn ghost" data-act="editProj" data-id="${p.id}">Editar</button></div>
+  <div class="sum" style="justify-content:flex-start;margin:0 2px 12px">${[p.cliente ? "Cliente: " + esc(p.cliente) : "", p.data ? "Data do evento: " + dataBR(p.data) : "", p.status === "concluido" ? "Concluído" : "Em andamento"].filter(Boolean).map(t => `<span>${t}</span>`).join("")}</div>
+  <div class="stats s5" style="margin-bottom:14px">${statBox("#5b6ee0", "📋", p.valor || 0, "Valor do contrato")}${statBox("#2e9e5b", "＋", r.rec, "Recebido", "pos")}${statBox("#f29a38", "⏳", Math.max(0, r.falta), "A receber")}${statBox("#d9483b", "－", r.gas, "Gastos", "neg")}${statBox("#3b7ddd", "＝", r.lucro, "Resultado até agora", cls(r.lucro))}</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start">
+    <div class="card"><h3>Pagamentos x gastos por mês</h3>${graficoMeses(ms)}</div>
+    <div class="card"><h3>Gastos por grupo</h3>${donut(gs.map(g => ({ nome: g.nome, cor: g.cor, v: g.v })), brl(r.gas))}</div>
+    <div class="card"><h3>Grupos e subgrupos</h3>${gs.length ? gs.map(g => `<div class="gr"><div class="gl"><i class="lg" style="background:${g.cor}"></i><b>${esc(g.nome)}</b><span>${(g.v / (r.gas || 1) * 100).toFixed(0)}%</span><b>${brl(g.v)}</b></div><div class="prog"><i style="width:${g.v / (gs[0].v || 1) * 100}%;background:${g.cor}"></i></div>
+      ${g.subs.map(sb => `<div class="sg"><span>${esc(sb.nome)}</span><div class="prog"><i style="width:${sb.v / (g.v || 1) * 100}%;background:${g.cor};opacity:.6"></i></div><span>${brl(sb.v)}</span></div>`).join("")}</div>`).join("") : '<div class="empty">Nenhum gasto lançado.</div>'}</div>
+    <div class="card"><h3>Pagamentos recebidos <button class="link" data-act="novoMov" data-tipo="recebimento">+ novo</button></h3>${rec.map(x => li(x, "pos")).join("") || '<div class="empty">Nenhum pagamento recebido.</div>'}${rec.length ? `<div class="sum">Total recebido: <b class="pos">${brl(r.rec)}</b></div>` : ""}</div>
+    <div class="card"><h3>Gastos <button class="link" data-act="novoMov" data-tipo="gasto">+ novo</button></h3>${gas.map(x => li(x, "neg")).join("") || '<div class="empty">Nenhum gasto lançado.</div>'}${gas.length ? `<div class="sum">Total de gastos: <b class="neg">${brl(r.gas)}</b></div>` : ""}</div>
+  </div>`;
+}
+V.dilcar = () => { const p = S.proj && by("projetos", S.proj); return p ? paginaProjeto(p) : listaProjetos(); };
 V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px">
   <div class="row" data-act="dark"><div class="tx">Tema escuro</div><span class="ck ${document.documentElement.classList.contains("dark") ? "on" : ""}">✓</span></div>
   <div class="row" data-act="csv"><div class="tx"><div>Exportar lançamentos (CSV)</div><small>Abre no Excel ou Google Planilhas</small></div></div>
@@ -387,7 +444,7 @@ function draw() {
   }
   $("#mlbl").textContent = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
   const pendHoje = fixasMes(ymOf(hoje())).some(x => x.pend);
-  $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}</button>`).join("");
+  $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" || k === "dilcar" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}</button>`).join("");
   const b = (k, n) => `<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}">${ico(k === "config" ? "mais" : k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}<span>${n}</span></button>`;
   $("#bot").innerHTML = b("inicio", "Início") + b("lancamentos", "Lançam.") + '<button class="fab" data-act="novo" aria-label="Novo lançamento">+</button>' + b("cartoes", "Cartões") + b("config", "Mais");
   const main = $("#main"), top = main.scrollTop;
@@ -406,7 +463,8 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
     if (f.type === "check") return `<div class="f chk"><input type="checkbox" id="f-${f.k}" data-k="${f.k}" ${f.redraw ? "data-redraw" : ""} ${val ? "checked" : ""}><label for="f-${f.k}">${f.label}</label></div>`;
     if (f.type === "select") { const o = opts(f); if (!o.some(([k]) => k === val)) v[f.k] = o[0]?.[0] ?? ""; return `<div class="f"><label for="f-${f.k}">${f.label}</label><select id="f-${f.k}" data-k="${f.k}" ${f.redraw ? "data-redraw" : ""}>${o.map(([k, n]) => `<option value="${esc(k)}" ${v[f.k] === k ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`; }
     const t = f.type === "money" ? 'type="text" inputmode="decimal" placeholder="0,00"' : f.type === "number" ? 'type="number" inputmode="numeric"' : `type="${f.type || "text"}"`;
-    return `<div class="f"><label for="f-${f.k}">${f.label}</label><input id="f-${f.k}" data-k="${f.k}" ${t} value="${esc(val)}" autocomplete="off"></div>`;
+    const dl = f.list ? opts({ options: f.list }) : null;
+    return `<div class="f"><label for="f-${f.k}">${f.label}</label><input id="f-${f.k}" data-k="${f.k}" ${t} value="${esc(val)}" autocomplete="off" ${dl ? `list="dl-${f.k}"` : ""}>${dl ? `<datalist id="dl-${f.k}">${dl.map(x => `<option value="${esc(x)}">`).join("")}</datalist>` : ""}</div>`;
   }).join("");
   let conf = false;
   const paint = () => {
@@ -504,6 +562,22 @@ function formLancarFixa(id) {
       l ? await store.set("lancamentos", l.id, d) : await store.add("lancamentos", d); },
     onDelete: l ? () => store.del("lancamentos", l.id) : null, delLabel: "Apagar lançamento do mês" });
 }
+const formProjeto = crud("projetos", "oprojeto", [{ k: "nome", label: "Nome do projeto / evento" }, { k: "cliente", label: "Cliente" }, { k: "data", label: "Data do evento", type: "date" }, { k: "valor", label: "Valor do contrato (R$)", type: "money" }, { k: "status", label: "Situação", type: "select", options: [["andamento", "Em andamento"], ["concluido", "Concluído"]] }, { k: "cor", label: "Cor", type: "color" }],
+  () => ({ nome: "", cliente: "", data: "", valor: "", status: "andamento", cor: PALETA[S.data.projetos.length % PALETA.length] }),
+  { in: o => ({ ...o, valor: moneyIn(o.valor) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), cliente: (v.cliente || "").trim(), data: v.data || "", valor: parseMoney(v.valor), status: v.status || "andamento", cor: v.cor } : (toast("Informe o nome do projeto."), null) },
+  o => S.data.movProjeto.some(x => x.projetoId === o.id) ? "Este projeto tem pagamentos ou gastos. Exclua-os antes." : "");
+function formMov(tipo, id) {
+  const o = by("movProjeto", id), t = o ? o.tipo : tipo, uniq = a => [...new Set(a.filter(Boolean))].sort((a1, b1) => a1.localeCompare(b1)), todos = S.data.movProjeto;
+  openForm({ title: (o ? "Editar " : "Novo ") + (t === "gasto" ? "gasto do projeto" : "pagamento recebido"),
+    values: o ? { ...o, valor: moneyIn(o.valor) } : { descricao: "", valor: "", data: hoje(), grupo: "", subgrupo: "" },
+    fields: [{ k: "descricao", label: "Descrição" }, { k: "valor", label: "Valor (R$)", type: "money" }, { k: "data", label: "Data", type: "date" },
+      { k: "grupo", label: "Grupo (ex.: Buffet, Decoração)", list: () => uniq([...GRUPOS_EV, ...todos.map(x => x.grupo)]), when: () => t === "gasto" },
+      { k: "subgrupo", label: "Subgrupo (ex.: Carnes, Flores)", list: v => uniq(todos.filter(x => !v.grupo || x.grupo === v.grupo.trim()).map(x => x.subgrupo)), when: () => t === "gasto" }],
+    onSave: async v => { const valor = parseMoney(v.valor); if (valor <= 0 || !v.data) { toast("Informe valor e data."); return false; }
+      const d = { projetoId: o ? o.projetoId : S.proj, tipo: t, descricao: (v.descricao || "").trim() || (t === "gasto" ? (v.grupo || "Gasto") : "Pagamento"), valor, data: v.data, grupo: t === "gasto" ? (v.grupo || "").trim() : "", subgrupo: t === "gasto" ? (v.subgrupo || "").trim() : "" };
+      o ? await store.set("movProjeto", o.id, d) : await store.add("movProjeto", d); },
+    onDelete: o ? () => store.del("movProjeto", o.id) : null });
+}
 const formOrc = crud("orcamentos", "oorçamento", [{ k: "categoriaId", label: "Categoria", type: "select", options: () => optCats("despesa") }, { k: "valor", label: "Limite mensal (R$)", type: "money" }],
   () => ({ valor: "" }), { in: o => ({ ...o, valor: moneyIn(o.valor) }), out: v => { const valor = parseMoney(v.valor); return valor > 0 && v.categoriaId ? { categoriaId: v.categoriaId, valor } : (toast("Informe categoria e valor."), null); } });
 
@@ -516,11 +590,13 @@ function exportarCSV() {
 
 /* ---------- ações ---------- */
 const A = {
-  nav: d => { S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
+  abrirProj: d => { S.proj = d.id; $("#main").scrollTop = 0; render(); }, voltarProj: () => { S.proj = null; render(); },
+  editProj: d => formProjeto(d.id), novoMov: d => formMov(d.tipo), editMov: d => formMov(null, d.id),
+  nav: d => { S.proj = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
   mes: d => { S.mes = addMes(S.mes, Number(d.v)); render(); },
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
-  novo: d => formLanc(null, d.cartao, d.pessoa),
+  novo: d => S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao, d.pessoa),
   editL: d => formLanc(by("lancamentos", d.id)),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
   editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => formPessoa(d.id), editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
