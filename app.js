@@ -683,9 +683,12 @@ const A = {
   impAplicar: () => { const cId = $("#impcat").value, sg = $("#impsub").value.trim(); if (!cId && !sg) return toast("Escolha uma categoria ou digite um subgrupo.");
     IMP.itens.filter(x => x.on).forEach(x => { if (cId) x.categoriaId = cId; if (sg) x.subgrupo = sg; }); telaImportar(); },
   impSalvar: async () => { const sel = IMP.itens.filter(x => x.on); if (!sel.length) return toast("Marque pelo menos uma compra.");
-    const novos = sel.map(x => { const p = /(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/.exec(x.descOrig), parc = p && Number(p[1]) <= Number(p[2]) && Number(p[2]) > 1;
-      return { tipo: "despesa", descricao: x.nome.trim() || x.descOrig || "Compra no cartão", valor: x.valor, data: x.data, categoriaId: x.categoriaId || "", subgrupo: (x.subgrupo || "").trim(), contaId: "", cartaoId: IMP.cartaoId, contaDestinoId: "", pessoaId: x.pessoaId || "", efetivada: true,
-        recorrencia: parc ? "parcelada" : "variavel", ...(parc ? { parcela: Number(p[1]), parcelas: Number(p[2]) } : {}), importId: x.importId, descOrig: x.descOrig, ...(IMP.modo === "fatura" ? { faturaRef: S.mes } : {}) }; });
+    const novos = sel.map(x => { const p = x.parcela ? [0, ...x.parcela] : null, parc = !!p, naFatura = IMP.modo === "fatura";
+      // No modo "tudo nesta fatura", a parcela 9/10 de uma compra de fevereiro é lançada na data da 9ª parcela, não na data da compra
+      let data = naFatura && parc && p[1] > 1 ? addMesData(x.data, p[1] - 1) : x.data;
+      if (naFatura && data > `${S.mes}-31`) data = x.data;
+      return { tipo: "despesa", descricao: x.nome.trim() || x.descOrig || "Compra no cartão", valor: x.valor, data, ...(data !== x.data ? { dataCompra: x.data } : {}), categoriaId: x.categoriaId || "", subgrupo: (x.subgrupo || "").trim(), contaId: "", cartaoId: IMP.cartaoId, contaDestinoId: "", pessoaId: x.pessoaId || "", efetivada: true,
+        recorrencia: parc ? "parcelada" : "variavel", ...(parc ? { parcela: Number(p[1]), parcelas: Number(p[2]) } : {}), importId: x.importId, descOrig: x.descOrig, ...(naFatura ? { faturaRef: S.mes } : {}) }; });
     try { await store.addMany("lancamentos", novos); toast(`${novos.length} compras importadas (${brl(total(novos))}).`); IMP = null; $("#modal").innerHTML = ""; }
     catch (err) { toast("Não foi possível importar: " + (err.code || err.message)); } },
   fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) { $("#modal").innerHTML = ""; IMP = null; } },
@@ -721,15 +724,18 @@ function lerCSV(txt) {
 function tabelaParaItens(rows) {
   const txt = c => (c instanceof Date ? "" : String(c ?? "")).trim(), reD = /^data|date|^dt/, reV = /^valor$|amount|valor.*r\$|^valor|montante/, reN = /descri|title|hist|estabelec|lan[çc]amento|memo|nome|name|movimenta/;
   let ic = rows.findIndex(r => r.some(c => reD.test(txt(c).toLowerCase())) && r.some(c => reV.test(txt(c).toLowerCase())));
-  const temCab = ic >= 0, cab = temCab ? rows[ic].map(c => txt(c).toLowerCase()) : [], acha = re => cab.findIndex(c => re.test(c));
+  const temCab = ic >= 0, cab = temCab ? rows[ic].map(c => txt(c).toLowerCase()) : [], acha = (re, nao) => cab.findIndex(c => re.test(c) && !(nao && nao.test(c)));
   const corpo = (temCab ? rows.slice(ic + 1) : rows).filter(r => r.some(c => impData(c))), am = corpo[0] || [];
-  let iD = acha(reD), iN = acha(reN), iV = acha(reV);
+  const reFora = /us\$|usd|d[oó]lar|cota[çc]/, rePort = /nome no cart|portador|titular|final do cart|cart[aã]o$/;
+  let iD = acha(reD), iN = acha(/descri/, rePort), iV = acha(/valor.*(r\$|reais|brl)/, reFora);
+  if (iN < 0) iN = acha(reN, rePort); if (iV < 0) iV = acha(reV, reFora);
+  const iP = acha(/^parcela/), iT = acha(/nome no cart|portador|titular/), iF = acha(/final do cart/);
   if (iD < 0) iD = am.findIndex(c => impData(c));
   const pareceValor = c => typeof c === "number" || (isFinite(impValor(c)) && /[.,]\d{2}$|^-?\d+$/.test(txt(c).replace(/[R$\s]/g, "")));
   if (iV < 0) { for (let k = am.length - 1; k >= 0; k--) if (k !== iD && pareceValor(am[k])) { iV = k; break; } }
   if (iN < 0) iN = am.map((c, k) => [k, k === iD || k === iV ? -1 : txt(c).length]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? -1;
   if (iD < 0 || iV < 0) return [];
-  return corpo.map(r => ({ data: impData(r[iD]), valor: impValor(r[iV]), nome: txt(r[iN]), fit: "" })).filter(x => x.data && isFinite(x.valor) && x.valor !== 0);
+  return corpo.map(r => ({ data: impData(r[iD]), valor: impValor(r[iV]), nome: txt(r[iN]), fit: "", parc: iP >= 0 ? txt(r[iP]) : "", obs: [iT >= 0 ? txt(r[iT]) : "", iF >= 0 && txt(r[iF]) ? "final " + txt(r[iF]) : ""].filter(Boolean).join(" · ") })).filter(x => x.data && isFinite(x.valor) && x.valor !== 0);
 }
 async function lerPlanilha(buf) {
   const X = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs"), wb = X.read(buf, { type: "array", cellDates: true });
@@ -751,10 +757,11 @@ async function importarArquivo(cartaoId, file) {
   const doCartao = S.data.lancamentos.filter(l => l.cartaoId === cartaoId);
   bruto.forEach(x => { x.nome = String(x.nome || "").replace(/\s+/g, " ").trim(); });
   IMP = { cartaoId, arquivo: file.name, modo: "fatura", itens: bruto.map(x => {
-    const credito = compraNeg ? x.valor > 0 : x.valor < 0, valor = Math.abs(x.valor), importId = x.fit || `${x.data}|${valor}|${norm(x.nome)}`, h = hist.get(norm(x.nome));
-    const dup = doCartao.some(l => l.importId === importId || (l.data === x.data && l.valor === valor && norm(l.descOrig || l.descricao) === norm(x.nome)));
-    const talvez = !dup && !credito && doCartao.some(l => l.data === x.data && l.valor === valor);
-    return { on: !credito && !dup && !talvez, credito, dup, talvez, data: x.data, valor, descOrig: x.nome, nome: h?.descricao || x.nome, categoriaId: h?.categoriaId || "", subgrupo: h?.subgrupo || "", pessoaId: h?.pessoaId || "", importId };
+    const pm = /(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/.exec(x.parc || "") || /(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/.exec(x.nome), parcela = pm && Number(pm[1]) <= Number(pm[2]) && Number(pm[2]) > 1 ? [Number(pm[1]), Number(pm[2])] : null;
+    const credito = compraNeg ? x.valor > 0 : x.valor < 0, valor = Math.abs(x.valor), importId = x.fit || `${x.data}|${valor}|${norm(x.nome)}${parcela ? "|" + parcela.join("/") : ""}`, h = hist.get(norm(x.nome));
+    const dup = doCartao.some(l => l.importId === importId || ((l.dataCompra || l.data) === x.data && l.valor === valor && norm(l.descOrig || l.descricao) === norm(x.nome)));
+    const talvez = !dup && !credito && doCartao.some(l => (l.dataCompra || l.data) === x.data && l.valor === valor);
+    return { on: !credito && !dup && !talvez, credito, dup, talvez, parcela, obs: x.obs || "", data: x.data, valor, descOrig: x.nome, nome: h?.descricao || x.nome, categoriaId: h?.categoriaId || "", subgrupo: h?.subgrupo || "", pessoaId: h?.pessoaId || "", importId };
   }).sort((a, b) => a.data.localeCompare(b.data)) };
   telaImportar();
 }
@@ -770,6 +777,7 @@ function telaImportar() {
       <label class="impck"><input type="checkbox" data-imp="on" ${x.on ? "checked" : ""}> <span>${dataBR(x.data)}</span></label><b class="${x.credito ? "pos" : "neg"}">${brl(x.valor)}</b>
       ${x.dup ? '<span class="tag" style="background:#f29a38">Já importada</span>' : x.talvez ? '<span class="tag" style="background:#f29a38" title="Já existe neste cartão uma compra com a mesma data e o mesmo valor">Possível repetida</span>' : x.credito ? '<span class="tag" style="background:#2e9e5b">Pagamento / estorno</span>' : "<span></span>"}
       <input class="impn" type="text" data-imp="nome" value="${esc(x.nome)}" title="Nome original: ${esc(x.descOrig)}" autocomplete="off">
+      ${x.parcela || x.obs ? `<small class="impo">${[x.parcela ? `Parcela ${x.parcela[0]}/${x.parcela[1]}` : "", esc(x.obs)].filter(Boolean).join(" · ")}</small>` : ""}
       ${selCat(x.categoriaId, 'data-imp="categoriaId"')}<input type="text" data-imp="subgrupo" value="${esc(x.subgrupo)}" placeholder="Subgrupo" autocomplete="off">
       ${ps.length ? `<select data-imp="pessoaId"><option value="">Eu</option>${ps.map(p => `<option value="${p.id}" ${p.id === x.pessoaId ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>` : ""}</div>`).join("")}</div>
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Cancelar</button><button class="btn" data-act="impSalvar">Importar marcadas</button></div></div></div>`;
