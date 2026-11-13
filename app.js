@@ -57,6 +57,7 @@ const S = { user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: 
 let store = null, fb = null, pend = false;
 const render = () => { if (pend) return; pend = true; requestAnimationFrame(() => { pend = false; draw(); }); };
 const by = (col, id) => S.data[col].find(x => x.id === id);
+const contasOrd = () => [...S.data.contas].sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || a.nome.localeCompare(b.nome));
 const cat = id => by("categorias", id) || { nome: "Sem categoria", icone: "📦", cor: "#90a4ae" };
 const toast = m => { const t = document.createElement("div"); t.className = "toast"; t.textContent = m; document.body.append(t); setTimeout(() => t.remove(), 2600); };
 try { if (localStorage.getItem("mf-dark") === "1") document.documentElement.classList.add("dark"); } catch (e) {}
@@ -196,7 +197,7 @@ const variacao = (a, b) => b > 0 ? `<span class="chip">${a >= b ? "↗" : "↘"}
 const V = {};
 V.inicio = () => {
   const m = S.mes, ant = addMes(m, -1);
-  const rs = S.data.contas.map(c => ({ c, ...resumoConta(c, m) }));
+  const rs = contasOrd().map(c => ({ c, ...resumoConta(c, m) }));
   const T = k => r2(rs.reduce((s, x) => s + x[k], 0));
   const desp = doMes("despesa"), rec = doMes("receita");
   const fat = r2(S.data.cartoes.reduce((s, c) => s + fatTotal(c.id, m), 0)), fatAnt = r2(S.data.cartoes.reduce((s, c) => s + fatTotal(c.id, ant), 0));
@@ -227,11 +228,11 @@ function tabContas(rs, curto) {
   if (!rs.length) return '<div class="empty">Nenhuma conta cadastrada.</div>';
   const T = k => r2(rs.reduce((s, x) => s + x[k], 0)), td = (v, c = "") => `<td class="${c}">${brl(v)}</td>`;
   return `<div style="overflow:auto"><table><thead><tr><th>Descrição</th>${curto ? "" : '<th class="hs">Saldo inicial</th>'}<th>Receitas</th><th>Despesas</th>${curto ? "" : '<th class="hs">Transf. créd.</th><th class="hs">Transf. déb.</th>'}<th>Saldo</th><th class="hs">Previsto</th></tr></thead>
-  <tbody>${rs.map(x => `<tr class="click" data-act="editConta" data-id="${x.c.id}"><td><div class="who">${av(ini(x.c.nome), x.c.cor)}${esc(x.c.nome)}</div></td>${curto ? "" : td(x.inicial, "hs " + cls(x.inicial))}${td(x.rec)}${td(x.des)}${curto ? "" : td(x.tc, "hs") + td(x.td, "hs")}${td(x.saldo, "b " + cls(x.saldo))}${td(x.previsto, "hs " + cls(x.previsto))}</tr>`).join("")}</tbody>
+  <tbody>${rs.map(x => `<tr class="click" data-act="editConta" data-id="${x.c.id}"><td><div class="who">${curto ? "" : '<span class="grip" data-act="nada" title="Arrastar para reordenar" aria-label="Arrastar para reordenar">⠿</span>'}${av(ini(x.c.nome), x.c.cor)}${esc(x.c.nome)}</div></td>${curto ? "" : td(x.inicial, "hs " + cls(x.inicial))}${td(x.rec)}${td(x.des)}${curto ? "" : td(x.tc, "hs") + td(x.td, "hs")}${td(x.saldo, "b " + cls(x.saldo))}${td(x.previsto, "hs " + cls(x.previsto))}</tr>`).join("")}</tbody>
   <tfoot><tr><td>Total</td>${curto ? "" : td(T("inicial"), "hs")}${td(T("rec"))}${td(T("des"))}${curto ? "" : td(T("tc"), "hs") + td(T("td"), "hs")}${td(T("saldo"))}${td(T("previsto"), "hs")}</tr></tfoot></table></div>`;
 }
 V.contas = () => `<div class="tools"><h2 style="flex:1">Contas</h2><button class="btn" data-act="editConta">Nova conta</button></div>
-  <div class="card">${tabContas(S.data.contas.map(c => ({ c, ...resumoConta(c, S.mes) })))}</div>`;
+  <div class="card">${tabContas(contasOrd().map(c => ({ c, ...resumoConta(c, S.mes) })))}<div class="sum">Arraste pelo botão ⠿ à esquerda para mudar a ordem das contas.</div></div>`;
 
 const sub = l => {
   const onde = l.cartaoId ? by("cartoes", l.cartaoId)?.nome : by("contas", l.contaId)?.nome;
@@ -364,7 +365,7 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
   const close = () => { box.innerHTML = ""; };
   paint();
 }
-const optContas = () => S.data.contas.map(c => [c.id, c.nome]);
+const optContas = () => contasOrd().map(c => [c.id, c.nome]);
 const optCats = t => S.data.categorias.filter(c => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome)).map(c => [c.id, `${c.icone} ${c.nome}`]);
 
 function formLanc(orig, cartaoId) {
@@ -456,6 +457,24 @@ const A = {
 };
 document.addEventListener("click", e => { const t = e.target.closest("[data-act]"); if (!t || t.closest("form.modal")) return; e.stopPropagation(); A[t.dataset.act]?.(t.dataset, e); });
 document.addEventListener("input", e => { if (e.target.id === "busca") { S.busca = e.target.value; $("#lista").innerHTML = listaLanc(); } });
+
+/* ---------- arrastar para reordenar contas ---------- */
+document.addEventListener("pointerdown", e => {
+  const g = e.target.closest(".grip"); if (!g) return;
+  e.preventDefault();
+  const tr = g.closest("tr"), tb = tr.parentNode; tr.classList.add("drag");
+  const move = ev => {
+    const alvo = [...tb.children].filter(r => r !== tr).find(r => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+    if (alvo) { if (tr.nextSibling !== alvo) tb.insertBefore(tr, alvo); } else if (tb.lastChild !== tr) tb.appendChild(tr);
+  };
+  const fim = () => {
+    window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", fim); window.removeEventListener("pointercancel", fim);
+    tr.classList.remove("drag");
+    Promise.all([...tb.children].map((r, i) => { const c = by("contas", r.dataset.id); return c && c.ordem !== i ? store.set("contas", c.id, { ...c, ordem: i }) : null; }))
+      .catch(err => toast("Não foi possível salvar a ordem: " + (err.code || err.message)));
+  };
+  window.addEventListener("pointermove", move); window.addEventListener("pointerup", fim); window.addEventListener("pointercancel", fim);
+});
 
 /* ---------- login ---------- */
 const ERROS = { "auth/invalid-credential": "E-mail ou senha incorretos.", "auth/invalid-email": "E-mail inválido.", "auth/email-already-in-use": "Este e-mail já tem conta. Use Entrar.", "auth/weak-password": "A senha precisa ter pelo menos 6 caracteres.", "auth/missing-password": "Digite a senha.", "auth/too-many-requests": "Muitas tentativas. Tente mais tarde.", "auth/network-request-failed": "Sem conexão com a internet." };

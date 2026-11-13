@@ -105,6 +105,10 @@ tfoot td{font-weight:700;background:var(--soft)}
 .empty{text-align:center;color:var(--mut);padding:28px 10px}
 .sum{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;font-size:12.5px;color:var(--mut);margin-top:14px}
 
+.grip{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;color:var(--mut);font-size:18px;width:28px;height:32px;display:grid;place-items:center;border-radius:8px;flex:none}
+.grip:hover{background:var(--line);color:var(--ink)}
+tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .grip{cursor:grabbing}
+
 /* cartões de crédito */
 .cc{grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
 .cc .hd{display:flex;align-items:center;gap:10px;margin-bottom:10px}
