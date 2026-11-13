@@ -64,7 +64,7 @@ let store = null, fb = null, pend = false;
 const render = () => { if (pend) return; pend = true; requestAnimationFrame(() => { pend = false; draw(); }); };
 const by = (col, id) => S.data[col].find(x => x.id === id);
 const contasOrd = () => [...S.data.contas].sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || a.nome.localeCompare(b.nome));
-const cat = id => by("categorias", id) || { nome: "Sem categoria", icone: "📦", cor: "#90a4ae" };
+const cat = id => id === "__emp" ? { nome: "Empréstimos", icone: "🤝", cor: "#5b6ee0" } : by("categorias", id) || { nome: "Sem categoria", icone: "📦", cor: "#90a4ae" };
 const toast = m => { const t = document.createElement("div"); t.className = "toast"; t.textContent = m; document.body.append(t); setTimeout(() => t.remove(), 2600); };
 try { if (localStorage.getItem("mf-dark") === "1") document.documentElement.classList.add("dark"); } catch (e) {}
 
@@ -179,7 +179,7 @@ const doMes = (tipo, ym = S.mes) => S.data.lancamentos.filter(l => l.tipo === ti
 const total = arr => r2(arr.reduce((s, l) => s + l.valor, 0));
 function porCategoria(arr) {
   const m = new Map();
-  arr.forEach(l => m.set(l.categoriaId || "", (m.get(l.categoriaId || "") || 0) + l.valor));
+  arr.forEach(l => { const k = l.emprestimo ? "__emp" : l.categoriaId || ""; m.set(k, (m.get(k) || 0) + l.valor); });
   const t = total(arr) || 1;
   return [...m].map(([id, v]) => ({ id, c: cat(id), v: r2(v), p: v / t * 100 })).sort((a, b) => b.v - a.v);
 }
@@ -258,10 +258,11 @@ const sub = l => {
   const onde = l.cartaoId ? by("cartoes", l.cartaoId)?.nome : by("contas", l.contaId)?.nome;
   if (l.tipo === "transferencia") return `${esc(onde || "?")} → ${esc(by("contas", l.contaDestinoId)?.nome || "?")}`;
   if (l.reembolso) return ["Pagamento recebido", onde].filter(Boolean).map(esc).join(" · ");
+  if (l.emprestimo) return ["Empréstimo", l.vencimento ? "pagar até " + dataBR(l.vencimento) : "", onde, by("pessoas", l.pessoaId)?.nome].filter(Boolean).map(esc).join(" · ");
   return [cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
 };
 const linha = l => {
-  const c = l.tipo === "transferencia" ? { icone: "⇄", cor: "#5b6ee0" } : l.reembolso ? { icone: "↩", cor: by("pessoas", l.pessoaId)?.cor || "#2e9e5b" } : cat(l.categoriaId);
+  const c = l.tipo === "transferencia" ? { icone: "⇄", cor: "#5b6ee0" } : l.reembolso ? { icone: "↩", cor: by("pessoas", l.pessoaId)?.cor || "#2e9e5b" } : cat(l.emprestimo ? "__emp" : l.categoriaId);
   const sinal = l.tipo === "receita" ? "pos" : l.tipo === "despesa" ? "neg" : "";
   return `<div class="row" data-act="editL" data-id="${l.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${sub(l)}</small></div>
   <span class="val ${sinal}">${l.tipo === "despesa" ? "-" : ""}${brl(l.valor)}</span>${l.cartaoId ? '<span class="ck" style="border:0;color:var(--mut)">💳</span>' : `<button class="ck ${l.efetivada ? "on" : ""}" data-act="toggleL" data-id="${l.id}" title="Efetivada">✓</button>`}</div>`;
@@ -323,6 +324,19 @@ function avisoFixas() {
   const at = p.filter(x => x.k === 0).length;
   return `<div class="aviso ${at ? "ruim" : ""}" data-act="lancarFixa" data-id="${p[0].f.id}"><b>${at ? "⚠" : "🔔"} ${p.length} ${p.length === 1 ? "conta mensal pendente" : "contas mensais pendentes"}${at ? ` (${at} ${at === 1 ? "vencida" : "vencidas"})` : ""}:</b> ${p.map(x => `${esc(x.f.nome)} — ${x.txt.toLowerCase()}`).join(" · ")}</div>`;
 }
+const emprestimos = (pid, ym = S.mes) => S.data.lancamentos.filter(l => l.emprestimo && l.pessoaId === pid && l.data <= `${ym}-31`).sort((a, b) => b.data.localeCompare(a.data));
+function formEmprestimo(pid, id) {
+  const o = by("lancamentos", id), p = by("pessoas", o ? o.pessoaId : pid); if (!p) return; if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
+  openForm({ title: `${o ? "Editar empréstimo" : "Empréstimo"} para ${esc(p.nome)}`,
+    values: o ? { valor: moneyIn(o.valor), data: o.data, vencimento: o.vencimento || "", contaId: o.contaId, descricao: o.descricao } : { valor: "", data: hoje(), vencimento: addMesData(hoje(), 1), descricao: "" },
+    fields: [{ k: "valor", label: "Valor emprestado (R$)", type: "money" }, { k: "data", label: "Data do empréstimo", type: "date" }, { k: "vencimento", label: "Data em que a pessoa deve pagar", type: "date" },
+      { k: "contaId", label: "Saiu da conta", type: "select", options: optContas }, { k: "descricao", label: "Observação (opcional)" }],
+    onSave: async v => { const valor = parseMoney(v.valor); if (valor <= 0 || !v.data) { toast("Informe o valor e a data do empréstimo."); return false; } if (!v.vencimento) { toast("Informe a data em que a pessoa deve pagar."); return false; }
+      if (v.vencimento < v.data) { toast("A data de pagamento não pode ser antes do empréstimo."); return false; }
+      const d = { ...(o || {}), tipo: "despesa", emprestimo: true, descricao: (v.descricao || "").trim() || `Empréstimo para ${p.nome}`, valor, data: v.data, vencimento: v.vencimento, categoriaId: "", subgrupo: "", contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: p.id, efetivada: true, recorrencia: "variavel" };
+      o ? await store.set("lancamentos", o.id, d) : await store.add("lancamentos", d); },
+    onDelete: o ? () => store.del("lancamentos", o.id) : null });
+}
 function contaPessoa(pid, ym = S.mes) {
   const fim = `${ym}-31`, ls = S.data.lancamentos.filter(l => l.pessoaId === pid && l.data <= fim);
   const gasto = total(ls.filter(l => l.tipo === "despesa")), pago = total(ls.filter(l => l.tipo === "receita" && l.reembolso));
@@ -337,8 +351,10 @@ V.pessoas = () => {
       <button class="link mais" data-act="novo" data-pessoa="${p.id}" title="Nova despesa">+</button>${p.id ? `<button data-act="editPessoa" data-id="${p.id}" title="Editar">${ico("mais")}</button>` : ""}</div>
       <div class="fat"><span>Gasto em ${mesNome}</span><b class="${t > 0 ? "neg" : ""}">${brl(t)}</b></div>
       ${c ? `<div class="prog" style="margin-top:10px"><i style="width:${c.gasto > 0 ? Math.max(0, Math.min(100, c.pago / c.gasto * 100)) : 0}%;background:var(--ok)"></i></div>
-      <div class="tri" style="margin-top:12px"><div><small>Total gasto</small>${brl(c.gasto)}</div><div><small>Já pagou</small><span class="pos">${brl(c.pago)}</span></div><div><small>${c.deve < -0.005 ? "Crédito" : "Ainda deve"}</small><b class="${c.deve > 0.005 ? "neg" : "pos"}">${brl(Math.abs(c.deve))}</b></div></div>
-      <div class="dash-l"></div><div class="ft" style="margin-top:0"><span class="tag" style="background:${c.deve > 0.005 ? "#d9483b" : "#2e9e5b"}">${c.deve > 0.005 ? "Deve" : c.deve < -0.005 ? "Pagou a mais" : "Quitado"}</span><button class="link" data-act="pagarPessoa" data-id="${p.id}">Registrar pagamento</button></div>`
+      <div class="tri" style="margin-top:12px"><div><small>Total a cobrar</small>${brl(c.gasto)}</div><div><small>Já pagou</small><span class="pos">${brl(c.pago)}</span></div><div><small>${c.deve < -0.005 ? "Crédito" : "Ainda deve"}</small><b class="${c.deve > 0.005 ? "neg" : "pos"}">${brl(Math.abs(c.deve))}</b></div></div>
+      ${(() => { const es = emprestimos(p.id); if (!es.length) return ""; const prox = es.filter(e => e.vencimento).map(e => e.vencimento).sort(), venc = c.deve > 0.005 && prox.some(d => d < hoje()), alvo = prox.find(d => d >= hoje()) || prox[prox.length - 1];
+        return `<div class="emp ${venc ? "neg" : "mut"}">🤝 Emprestado: <b>${brl(total(es))}</b>${alvo ? ` · ${venc ? "venceu em " + dataBR(prox.find(d => d < hoje())) : "pagar até " + dataBR(alvo)}` : ""}</div>`; })()}
+      <div class="dash-l"></div><div class="ft" style="margin-top:0;flex-wrap:wrap"><span class="tag" style="background:${c.deve > 0.005 ? "#d9483b" : "#2e9e5b"}">${c.deve > 0.005 ? "Deve" : c.deve < -0.005 ? "Pagou a mais" : "Quitado"}</span><span><button class="link" data-act="emprestar" data-id="${p.id}">Emprestar</button> &nbsp; <button class="link" data-act="pagarPessoa" data-id="${p.id}">Registrar pagamento</button></span></div>`
       : `<div class="prog" style="margin-top:10px"><i style="width:${Math.min(100, t / tudo * 100)}%;background:${esc(p.cor)}"></i></div>
       <div class="tri" style="margin-top:12px"><div><small>No cartão</small>${brl(kc)}</div><div><small>Em conta</small>${brl(r2(t - kc))}</div><div><small>Do total</small>${(t / tudo * 100).toFixed(0)}%</div></div>`}</div>`; };
   const meus = doMes("despesa").filter(l => !validos.has(l.pessoaId));
@@ -349,7 +365,7 @@ V.pessoas = () => {
     return `<div class="gh"><h3>${n}</h3><span>${g.length} ${g.length === 1 ? "pessoa" : "pessoas"} · a receber <b class="${deve > 0 ? "neg" : ""}">${brl(deve)}</b></span></div>
     <div class="grid cc pgrp" data-grupo="${k}">${g.map(p => card(p, gastosDe(p.id))).join("")}<div class="vazio">Arraste alguém para cá</div></div>`; }).join("")}
   <div class="sum"><span>Meus gastos no mês: <b>${brl(total(meus))}</b></span><span>Gastos de outras pessoas no mês: <b>${brl(outros)}</b></span><span>Total a receber até ${mesNome}: <b class="neg">${brl(r2(ps.reduce((s0, p) => s0 + Math.max(0, contaPessoa(p.id).deve), 0)))}</b></span></div>
-  <div class="sum">${ps.length ? "Total gasto, já pagou e ainda deve somam tudo desde o início até o mês selecionado. Arraste pelo botão ⠿ para mudar a pessoa de grupo ou de ordem." : ""}</div>
+  <div class="sum">${ps.length ? "Total a cobrar (gastos + empréstimos), já pagou e ainda deve somam tudo desde o início até o mês selecionado. Arraste pelo botão ⠿ para mudar a pessoa de grupo ou de ordem." : ""}</div>
   ${ps.length ? "" : '<div class="sum">Cadastre as pessoas da casa e, em cada despesa, escolha de quem é o gasto.</div>'}`;
 };
 function orcLista(curto) {
@@ -603,7 +619,8 @@ const A = {
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
   novo: d => S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao, d.pessoa),
-  editL: d => formLanc(by("lancamentos", d.id)),
+  editL: d => { const l = by("lancamentos", d.id); l?.emprestimo ? formEmprestimo(l.pessoaId, l.id) : formLanc(l); },
+  emprestar: d => formEmprestimo(d.id),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
   editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => formPessoa(d.id), editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
   pagar: d => { const c = by("cartoes", d.id), valor = fatTotal(c.id, S.mes);
@@ -614,14 +631,15 @@ const A = {
     $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>Fatura — ${esc(by("cartoes", d.id).nome)}</h2>${it.map(l => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${sub(l)}</small></div><b>${brl(l.valor)}</b></div>`).join("") || '<div class="empty">Nenhuma despesa nesta fatura.</div>'}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   verPessoa: d => { const validos = new Set(S.data.pessoas.map(p => p.id)), p = by("pessoas", d.id), c = p ? contaPessoa(p.id) : null;
-    const it = doMes("despesa").filter(l => p ? l.pessoaId === p.id : !validos.has(l.pessoaId)).sort((a, b) => a.data.localeCompare(b.data));
+    const it = doMes("despesa").filter(l => !l.emprestimo && (p ? l.pessoaId === p.id : !validos.has(l.pessoaId))).sort((a, b) => a.data.localeCompare(b.data));
     const pg = p ? S.data.lancamentos.filter(l => l.reembolso && l.pessoaId === p.id && l.data <= `${S.mes}-31`).sort((a, b) => b.data.localeCompare(a.data)) : [];
     const li = (l, k) => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${sub(l)}</small></div><b class="${k}">${brl(l.valor)}</b></div>`;
     $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>${esc(p ? p.nome : "Eu")}</h2>
-    ${c ? `<div class="tri" style="font-size:14px;margin-bottom:10px"><div><small>Total gasto</small>${brl(c.gasto)}</div><div><small>Já pagou</small><span class="pos">${brl(c.pago)}</span></div><div><small>${c.deve < -0.005 ? "Crédito" : "Ainda deve"}</small><b class="${c.deve > 0.005 ? "neg" : "pos"}">${brl(Math.abs(c.deve))}</b></div></div>` : ""}
+    ${c ? `<div class="tri" style="font-size:14px;margin-bottom:10px"><div><small>Total a cobrar</small>${brl(c.gasto)}</div><div><small>Já pagou</small><span class="pos">${brl(c.pago)}</span></div><div><small>${c.deve < -0.005 ? "Crédito" : "Ainda deve"}</small><b class="${c.deve > 0.005 ? "neg" : "pos"}">${brl(Math.abs(c.deve))}</b></div></div>` : ""}
+    ${p && emprestimos(p.id).length ? `<div class="day">Empréstimos</div>${emprestimos(p.id).map(l => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>Emprestado em ${dataBR(l.data)}${l.vencimento ? ` · <span class="${c.deve > 0.005 && l.vencimento < hoje() ? "neg b" : ""}">${c.deve > 0.005 && l.vencimento < hoje() ? "venceu em" : "pagar até"} ${dataBR(l.vencimento)}</span>` : ""}</small></div><b>${brl(l.valor)}</b></div>`).join("")}` : ""}
     <div class="day">Despesas do mês — ${brl(total(it))}</div>${it.map(l => li(l, "")).join("") || '<div class="empty">Nenhuma despesa neste mês.</div>'}
     ${p ? `<div class="day">Pagamentos recebidos</div>${pg.map(l => li(l, "pos")).join("") || '<div class="empty">Nenhum pagamento registrado.</div>'}` : ""}
-    <div class="acts">${p ? `<button class="btn" data-act="pagarPessoa" data-id="${p.id}">Registrar pagamento</button>` : ""}<span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
+    <div class="acts">${p ? `<button class="btn ghost" data-act="emprestar" data-id="${p.id}">Emprestar</button><button class="btn" data-act="pagarPessoa" data-id="${p.id}">Registrar pagamento</button>` : ""}<span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   pagarPessoa: d => { const p = by("pessoas", d.id), c = contaPessoa(p.id); if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
     openForm({ title: `Pagamento de ${esc(p.nome)}`, values: { valor: c.deve > 0 ? moneyIn(c.deve) : "", data: ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01` },
       fields: [{ k: "valor", label: `Valor recebido (R$) — deve ${brl(Math.max(0, c.deve))}`, type: "money" }, { k: "data", label: "Data", type: "date" }, { k: "contaId", label: "Entrou na conta", type: "select", options: optContas }],
