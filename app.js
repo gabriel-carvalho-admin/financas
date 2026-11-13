@@ -140,7 +140,7 @@ function semearDemo() {
 }
 
 /* ---------- cálculos ---------- */
-const fatMes = l => { const c = by("cartoes", l.cartaoId); return Number(l.data.slice(8)) > (c?.fechamento || 31) ? addMes(ymOf(l.data), 1) : ymOf(l.data); };
+const fatMes = l => { if (l.faturaRef) return l.faturaRef; const c = by("cartoes", l.cartaoId); return Number(l.data.slice(8)) > (c?.fechamento || 31) ? addMes(ymOf(l.data), 1) : ymOf(l.data); };
 const fatItens = (cid, ym) => S.data.lancamentos.filter(l => l.cartaoId === cid && fatMes(l) === ym);
 const fatTotal = (cid, ym) => r2(fatItens(cid, ym).reduce((s, l) => s + l.valor, 0));
 const emAberto = c => r2(S.data.lancamentos.filter(l => l.cartaoId === c.id && !c.pagas?.[fatMes(l)]).reduce((s, l) => s + l.valor, 0));
@@ -293,7 +293,7 @@ V.cartoes = () => {
       <div class="prog"><i style="width:${Math.min(100, c.limite ? ab / c.limite * 100 : 0)}%;background:${esc(c.cor)}"></i></div>
       <div class="tri" style="margin-top:12px"><div><small>Conta</small>${esc(by("contas", c.contaId)?.nome || "-")}</div><div><small>Fechamento</small>${dataBR(fech).slice(0, 5)}</div><div><small>Vencimento</small>${dataBR(dataNoMes(m, c.vencimento || 10)).slice(0, 5)}</div></div>
       <div class="dash-l"></div><div class="fat"><span>Fatura de ${MESES[Number(m.slice(5)) - 1].toLowerCase()}</span><b class="${paga ? "" : ft > 0 ? "neg" : ""}">${brl(paga ? paga.valor : ft)}</b></div>
-      <div class="ft"><span class="tag" style="background:${st[1]}">${st[0]}</span><span><button class="link" data-act="verFatura" data-id="${c.id}">Itens</button> &nbsp;
+      <div class="ft"><span class="tag" style="background:${st[1]}">${st[0]}</span><span><button class="link" data-act="importar" data-id="${c.id}" title="Importar arquivo OFX ou CSV">⬆ Importar</button> &nbsp; <button class="link" data-act="verFatura" data-id="${c.id}">Itens</button> &nbsp;
       ${paga ? `<button class="link" data-act="reabrir" data-id="${c.id}">Reabrir</button>` : ft > 0 ? `<button class="link" data-act="pagar" data-id="${c.id}">Registrar pagamento</button>` : ""}</span></div></div>`;
   }).join("");
   const disp = r2(cs.reduce((s, c) => s + (c.limite || 0) - emAberto(c), 0)), fat = r2(cs.reduce((s, c) => s + fatTotal(c.id, m), 0));
@@ -627,7 +627,19 @@ const A = {
       fields: [{ k: "valor", label: `Valor recebido (R$) — deve ${brl(Math.max(0, c.deve))}`, type: "money" }, { k: "data", label: "Data", type: "date" }, { k: "contaId", label: "Entrou na conta", type: "select", options: optContas }],
       onSave: async v => { const valor = parseMoney(v.valor); if (valor <= 0 || !v.data) { toast("Informe valor e data."); return false; }
         await store.add("lancamentos", { tipo: "receita", descricao: `Pagamento de ${p.nome}`, valor, data: v.data, categoriaId: "", contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: p.id, reembolso: true, efetivada: true, recorrencia: "variavel" }); } }); },
-  fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) $("#modal").innerHTML = ""; },
+  importar: d => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".ofx,.qfx,.csv,.txt,text/csv"; inp.style.display = "none"; inp.id = "impfile";
+    inp.onchange = () => { const f = inp.files[0]; inp.remove(); if (f) importarArquivo(d.id, f).catch(err => toast("Não consegui ler o arquivo: " + err.message)); };
+    document.getElementById("impfile")?.remove(); document.body.append(inp); inp.click(); },
+  impTodas: () => { const algum = IMP.itens.some(x => x.on); IMP.itens.forEach(x => x.on = !algum && !x.credito); telaImportar(); },
+  impAplicar: () => { const cId = $("#impcat").value, sg = $("#impsub").value.trim(); if (!cId && !sg) return toast("Escolha uma categoria ou digite um subgrupo.");
+    IMP.itens.filter(x => x.on).forEach(x => { if (cId) x.categoriaId = cId; if (sg) x.subgrupo = sg; }); telaImportar(); },
+  impSalvar: async () => { const sel = IMP.itens.filter(x => x.on); if (!sel.length) return toast("Marque pelo menos uma compra.");
+    const novos = sel.map(x => { const p = /(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/.exec(x.descOrig), parc = p && Number(p[1]) <= Number(p[2]) && Number(p[2]) > 1;
+      return { tipo: "despesa", descricao: x.nome.trim() || x.descOrig || "Compra no cartão", valor: x.valor, data: x.data, categoriaId: x.categoriaId || "", subgrupo: (x.subgrupo || "").trim(), contaId: "", cartaoId: IMP.cartaoId, contaDestinoId: "", pessoaId: x.pessoaId || "", efetivada: true,
+        recorrencia: parc ? "parcelada" : "variavel", ...(parc ? { parcela: Number(p[1]), parcelas: Number(p[2]) } : {}), importId: x.importId, descOrig: x.descOrig, ...(IMP.modo === "fatura" ? { faturaRef: S.mes } : {}) }; });
+    try { await store.addMany("lancamentos", novos); toast(`${novos.length} compras importadas (${brl(total(novos))}).`); IMP = null; $("#modal").innerHTML = ""; }
+    catch (err) { toast("Não foi possível importar: " + (err.code || err.message)); } },
+  fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) { $("#modal").innerHTML = ""; IMP = null; } },
   dark: () => { const on = document.documentElement.classList.toggle("dark"); try { localStorage.setItem("mf-dark", on ? "1" : "0"); } catch (e) {} render(); },
   csv: exportarCSV,
   sair: () => { if (S.demo) location.reload(); else fb.A.signOut(fb.auth); }
@@ -635,7 +647,76 @@ const A = {
 document.addEventListener("click", e => { const t = e.target.closest("[data-act]"); if (!t || t.closest("form.modal")) return; e.stopPropagation(); A[t.dataset.act]?.(t.dataset, e); });
 document.addEventListener("input", e => { if (e.target.id === "busca") { S.busca = e.target.value; $("#lista").innerHTML = listaLanc(); } });
 
-/* ---------- arrastar para reordenar contas ---------- */
+/* ---------- importar OFX / CSV no cartão ---------- */
+const impData = t => { t = String(t || "").trim(); let m;
+  if ((m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t))) return `${m[1]}-${m[2]}-${m[3]}`;
+  if ((m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/.exec(t))) return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  if ((m = /^(\d{4})(\d{2})(\d{2})/.exec(t))) return `${m[1]}-${m[2]}-${m[3]}`;
+  return ""; };
+const impValor = t => { t = String(t ?? "").replace(/[R$\s"]/g, ""); if (!/\d/.test(t)) return NaN; const neg = /^-|-$|^\(.*\)$/.test(t); t = t.replace(/[()\-+]/g, "");
+  const v = t.lastIndexOf(","), p = t.lastIndexOf(".");
+  if (v >= 0 && p >= 0) t = v > p ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  else if (v >= 0) t = t.replace(",", "."); else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  const n = parseFloat(t); return isFinite(n) ? r2(neg ? -n : n) : NaN; };
+function lerOFX(txt) {
+  const tag = (b, n) => (new RegExp("<" + n + ">([^<\\r\\n]*)", "i").exec(b) || [])[1]?.trim() || "";
+  return txt.split(/<STMTTRN>/i).slice(1).map(b => ({ data: impData(tag(b, "DTPOSTED")), valor: impValor(tag(b, "TRNAMT")), nome: tag(b, "MEMO") || tag(b, "NAME"), fit: tag(b, "FITID") })).filter(x => x.data && isFinite(x.valor));
+}
+function lerCSV(txt) {
+  const linhas = txt.replace(/^\ufeff/, "").split(/\r?\n/).filter(l => l.trim()); if (!linhas.length) return [];
+  const sep = [";", "\t", ","].map(d => [d, linhas[0].split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const cel = l => { const out = []; let c = "", q = false; for (let i = 0; i < l.length; i++) { const ch = l[i]; if (q) { if (ch === '"') { if (l[i + 1] === '"') { c += '"'; i++; } else q = false; } else c += ch; } else if (ch === '"') q = true; else if (ch === sep) { out.push(c); c = ""; } else c += ch; } out.push(c); return out.map(x => x.trim()); };
+  const rows = linhas.map(cel), temCab = !rows[0].some(c => impData(c)), cab = temCab ? rows[0].map(c => c.toLowerCase()) : [];
+  const acha = re => cab.findIndex(c => re.test(c));
+  let iD = acha(/^data|date|dt/), iN = acha(/descri|title|hist|estabelec|lan[çc]amento|memo|nome|name/), iV = acha(/^valor$|amount|valor \(r\$\)|valor.*r\$|^valor/);
+  const corpo = temCab ? rows.slice(1) : rows, am = corpo[0] || [];
+  if (iD < 0) iD = am.findIndex(c => impData(c));
+  if (iV < 0) { for (let i = am.length - 1; i >= 0; i--) if (i !== iD && isFinite(impValor(am[i])) && /[.,]\d{2}$|^-?\d+$/.test(am[i].replace(/[R$\s]/g, ""))) { iV = i; break; } }
+  if (iN < 0) iN = am.map((c, i) => [i, i === iD || i === iV ? -1 : c.length]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? -1;
+  if (iD < 0 || iV < 0) return [];
+  return corpo.map(r => ({ data: impData(r[iD]), valor: impValor(r[iV]), nome: r[iN] || "", fit: "" })).filter(x => x.data && isFinite(x.valor) && x.valor !== 0);
+}
+let IMP = null;
+async function importarArquivo(cartaoId, file) {
+  const buf = await file.arrayBuffer(); let txt;
+  try { txt = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch (e) { txt = new TextDecoder("windows-1252").decode(buf); }
+  const ofx = /<OFX>|<STMTTRN>/i.test(txt), bruto = ofx ? lerOFX(txt) : lerCSV(txt);
+  if (!bruto.length) return toast("Não encontrei compras neste arquivo. Envie um OFX ou CSV da fatura.");
+  const negs = bruto.filter(x => x.valor < 0).length, compraNeg = ofx ? negs > 0 : negs > bruto.length / 2;
+  const norm = t => t.toLowerCase().replace(/\s+/g, " ").trim(), hist = new Map();
+  S.data.lancamentos.forEach(l => { if (l.descOrig) hist.set(norm(l.descOrig), l); });
+  const doCartao = S.data.lancamentos.filter(l => l.cartaoId === cartaoId);
+  IMP = { cartaoId, arquivo: file.name, modo: "fatura", itens: bruto.map(x => {
+    const credito = compraNeg ? x.valor > 0 : x.valor < 0, valor = Math.abs(x.valor), importId = x.fit || `${x.data}|${valor}|${norm(x.nome)}`, h = hist.get(norm(x.nome));
+    const dup = doCartao.some(l => l.importId === importId || (l.data === x.data && l.valor === valor && norm(l.descOrig || l.descricao) === norm(x.nome)));
+    return { on: !credito && !dup, credito, dup, data: x.data, valor, descOrig: x.nome, nome: h?.descricao || x.nome, categoriaId: h?.categoriaId || "", subgrupo: h?.subgrupo || "", pessoaId: h?.pessoaId || "", importId };
+  }).sort((a, b) => a.data.localeCompare(b.data)) };
+  telaImportar();
+}
+function impResumo() { const m = IMP.itens.filter(x => x.on); return `${m.length} de ${IMP.itens.length} marcadas · total ${brl(total(m))}`; }
+function telaImportar() {
+  const c = by("cartoes", IMP.cartaoId), cats = optCats("despesa"), ps = [...S.data.pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), mes = `${MESES[Number(S.mes.slice(5)) - 1].toLowerCase()} de ${S.mes.slice(0, 4)}`;
+  const selCat = (v, attr) => `<select ${attr}><option value="">— categoria —</option>${cats.map(([k, n]) => `<option value="${k}" ${k === v ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>`;
+  $("#modal").innerHTML = `<div class="ov"><div class="modal imp"><h2>Importar para ${esc(c.nome)}</h2>
+    <div class="sum" style="justify-content:flex-start;margin:0 0 10px">${esc(IMP.arquivo)} · <b id="impres">${impResumo()}</b></div>
+    <div class="f"><label for="impmodo">Em qual fatura lançar</label><select id="impmodo" data-impg="modo"><option value="fatura" ${IMP.modo === "fatura" ? "selected" : ""}>Tudo na fatura de ${mes} (mês selecionado no topo)</option><option value="data" ${IMP.modo === "data" ? "selected" : ""}>Pela data de cada compra e o dia de fechamento</option></select></div>
+    <div class="impbar"><span>Aplicar às marcadas:</span>${selCat("", 'id="impcat"')}<input id="impsub" type="text" placeholder="Subgrupo" autocomplete="off"><button class="btn ghost" data-act="impAplicar">Aplicar</button><button class="btn ghost" data-act="impTodas">Marcar / desmarcar todas</button></div>
+    <div class="implist">${IMP.itens.map((x, i) => `<div class="impi ${x.on ? "" : "off"}" data-i="${i}">
+      <label class="impck"><input type="checkbox" data-imp="on" ${x.on ? "checked" : ""}> <span>${dataBR(x.data)}</span></label><b class="${x.credito ? "pos" : "neg"}">${brl(x.valor)}</b>
+      ${x.dup ? '<span class="tag" style="background:#f29a38">Já importada</span>' : x.credito ? '<span class="tag" style="background:#2e9e5b">Pagamento / estorno</span>' : "<span></span>"}
+      <input class="impn" type="text" data-imp="nome" value="${esc(x.nome)}" title="Nome original: ${esc(x.descOrig)}" autocomplete="off">
+      ${selCat(x.categoriaId, 'data-imp="categoriaId"')}<input type="text" data-imp="subgrupo" value="${esc(x.subgrupo)}" placeholder="Subgrupo" autocomplete="off">
+      ${ps.length ? `<select data-imp="pessoaId"><option value="">Eu</option>${ps.map(p => `<option value="${p.id}" ${p.id === x.pessoaId ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>` : ""}</div>`).join("")}</div>
+    <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Cancelar</button><button class="btn" data-act="impSalvar">Importar marcadas</button></div></div></div>`;
+}
+document.addEventListener("input", e => {
+  if (!IMP) return; const t = e.target;
+  if (t.dataset.impg) { IMP[t.dataset.impg] = t.value; return; }
+  const k = t.dataset.imp, row = t.closest(".impi"); if (!k || !row) return;
+  const x = IMP.itens[Number(row.dataset.i)]; x[k] = t.type === "checkbox" ? t.checked : t.value;
+  if (k === "on") { row.classList.toggle("off", !x.on); $("#impres").textContent = impResumo(); }
+});
+
 document.addEventListener("pointerdown", e => {
   const g = e.target.closest(".grip"); if (!g) return;
   e.preventDefault();
