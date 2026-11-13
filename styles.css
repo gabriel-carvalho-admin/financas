@@ -136,6 +136,12 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .arrastando{cursor:grabbing;user-select:none;-webkit-user-select:none}
 .pcard .grip{margin-left:-8px}
 
+.aviso{margin-bottom:14px;background:color-mix(in srgb,var(--warn) 16%,var(--card));border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:14px;padding:11px 14px;cursor:pointer;font-size:13.5px}
+.aviso.ruim{background:color-mix(in srgb,var(--bad) 12%,var(--card));border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+.side button,.bot button{position:relative}
+.ndot{position:absolute;top:6px;right:8px;width:9px;height:9px;border-radius:50%;background:var(--bad);border:2px solid var(--card)}
+#cfixas .row .r{display:grid;justify-items:end;gap:3px}
+
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(15,23,42,.45);display:grid;place-items:center;z-index:20;padding:12px}
 .modal{background:var(--card);border-radius:20px;width:100%;max-width:440px;max-height:92vh;overflow:auto;padding:18px}

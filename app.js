@@ -8,7 +8,7 @@ const firebaseConfig = {
   appId: "1:986463923028:web:741ca828cfba9bba4bf6c1"
 };
 const FB = "https://www.gstatic.com/firebasejs/10.14.1/";
-const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas"];
+const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas", "fixas"];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
 /* ---------- utilidades ---------- */
@@ -124,6 +124,8 @@ function semearDemo() {
   D.pessoas = [{ id: "m", nome: "Mãe", cor: "#e0564a", grupo: "familia" }, { id: "i", nome: "Irmão", cor: "#2f8f83", grupo: "familia" }, { id: "t", nome: "Tia", cor: "#7e57c2", grupo: "parentes" }, { id: "x", nome: "Amigo", cor: "#f29a38", grupo: "amigos" }];
   D.lancamentos.filter(l => ["Farmácia", "Supermercado"].includes(l.descricao)).forEach(l => l.pessoaId = "m");
   D.lancamentos.filter(l => ["Notebook 2/6", "Cinema"].includes(l.descricao)).forEach(l => l.pessoaId = "i");
+  D.fixas = [{ id: "fa", nome: "Água", dia: 10, categoriaId: c("Contas fixas"), contaId: "b" }, { id: "fl", nome: "Luz", dia: 22, categoriaId: c("Contas fixas"), contaId: "b" }, { id: "fi", nome: "Internet", dia: 8, categoriaId: c("Contas fixas"), contaId: "b" }];
+  D.lancamentos.filter(l => ymOf(l.data) === m).forEach(l => { const f = { Energia: "fl", Internet: "fi" }[l.descricao]; if (f) Object.assign(l, { fixaId: f, mesRef: m, vencimento: l.data, descricao: f === "fl" ? "Luz" : l.descricao }); });
   D.orcamentos = [{ id: id(), categoriaId: c("Mercado"), valor: 900 }, { id: id(), categoriaId: c("Alimentação"), valor: 300 }, { id: id(), categoriaId: c("Lazer"), valor: 200 }];
 }
 
@@ -211,13 +213,14 @@ V.inicio = () => {
   const rk = porCategoria(desp);
   const rc = k => total(desp.filter(l => (l.recorrencia || "variavel") === k));
   const stat = (cor, sym, v, lbl, extra = "", c = "") => `<div class="card stat"><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small>${extra}</div></div>`;
-  return `<div class="grid dash">
+  return `${avisoFixas()}<div class="grid dash">
   <div class="card"><div class="tl">
     <div><span class="v">${brl(T("inicial"))}</span><small>Inicial</small></div>
     <div class="now"><span class="v ${cls(T("saldo"))}">${brl(T("saldo"))}</span><small>Saldo atual</small></div>
     <div><span class="v">${brl(T("previsto"))}</span><small>Previsto</small></div></div></div>
   <div class="card"><h3>Ranking de categorias</h3>${barras(rk)}${rk.length ? `<div class="sum">Total gasto no mês: ${brl(total(desp))}</div>` : ""}</div>
   <div class="c-side">
+    ${cardFixas()}
     <div class="card"><h3>Orçamentos de despesas <button class="link" data-act="nav" data-v="orcamentos">ver</button></h3>${orcLista(true)}</div>
     <div class="card"><h3>Despesas por recorrência</h3>${donut([{ nome: "Fixas", cor: "#4a9be0", v: rc("fixa") }, { nome: "Parceladas", cor: "#f5b335", v: rc("parcelada") }, { nome: "Variáveis", cor: "#e0564a", v: rc("variavel") }], brl(total(desp)))}</div>
   </div>
@@ -288,6 +291,28 @@ V.cartoes = () => {
   ${cs.length ? `<div class="grid cc">${cards}</div><div class="sum"><span>Limite disponível: <b>${brl(disp)}</b></span><span>Total de faturas no mês: <b>${brl(fat)}</b></span></div>` : '<div class="card empty">Nenhum cartão cadastrado.</div>'}`;
 };
 
+const lancFixa = (f, ym = S.mes) => S.data.lancamentos.find(l => l.fixaId === f.id && l.mesRef === ym);
+function statusFixa(f, ym = S.mes) {
+  const l = lancFixa(f, ym), venc = l?.vencimento || dataNoMes(ym, f.dia || 10), dm = d => dataBR(d).slice(0, 5), atras = venc < hoje();
+  if (l?.efetivada) return { k: 3, l, venc, txt: `Paga em ${dm(l.data)}`, tag: "Paga", cor: "#2e9e5b", pend: false };
+  const pend = ym <= ymOf(hoje());
+  if (l) return { k: atras ? 0 : 1, l, venc, txt: `${atras ? "Venceu" : "Vence"} em ${dm(venc)}`, tag: atras ? "Atrasada" : "A pagar", cor: atras ? "#d9483b" : "#f29a38", pend };
+  return { k: atras ? 0 : 2, l, venc, txt: `Falta lançar · ${atras && pend ? "venceu" : "vence"} dia ${pad(Number(venc.slice(8)))}`, tag: "Lançar", cor: atras && pend ? "#d9483b" : "#3b7ddd", pend };
+}
+const fixasMes = (ym = S.mes) => S.data.fixas.map(f => ({ f, ...statusFixa(f, ym) })).sort((a, b) => a.k - b.k || a.venc.localeCompare(b.venc));
+function cardFixas() {
+  const fs = fixasMes(), pagas = fs.filter(x => x.k === 3).length, tot = r2(fs.reduce((s0, x) => s0 + (x.l?.valor || 0), 0));
+  return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>
+  ${fs.map(x => { const c = cat(x.f.categoriaId); return `<div class="row" data-act="lancarFixa" data-id="${x.f.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(x.f.nome)}</div><small>${x.txt}</small></div>
+    <div class="r"><div class="b">${x.l ? brl(x.l.valor) : "—"}</div><span class="tag" style="background:${x.cor}">${x.tag}</span></div><button data-act="editFixa" data-id="${x.f.id}" title="Editar conta mensal">${ico("mais")}</button></div>`; }).join("")
+    || '<div class="empty">Cadastre água, luz, internet… e o app lembra você todo mês.</div>'}
+  ${fs.length ? `<div class="sum">${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b></div>` : ""}</div>`;
+}
+function avisoFixas() {
+  const p = fixasMes().filter(x => x.pend); if (!p.length) return "";
+  const at = p.filter(x => x.k === 0).length;
+  return `<div class="aviso ${at ? "ruim" : ""}" data-act="lancarFixa" data-id="${p[0].f.id}"><b>${at ? "⚠" : "🔔"} ${p.length} ${p.length === 1 ? "conta mensal pendente" : "contas mensais pendentes"}${at ? ` (${at} ${at === 1 ? "vencida" : "vencidas"})` : ""}:</b> ${p.map(x => `${esc(x.f.nome)} — ${x.txt.toLowerCase()}`).join(" · ")}</div>`;
+}
 function contaPessoa(pid, ym = S.mes) {
   const fim = `${ym}-31`, ls = S.data.lancamentos.filter(l => l.pessoaId === pid && l.data <= fim);
   const gasto = total(ls.filter(l => l.tipo === "despesa")), pago = total(ls.filter(l => l.tipo === "receita" && l.reembolso));
@@ -361,8 +386,9 @@ function draw() {
       <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="modal"></div>`;
   }
   $("#mlbl").textContent = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
-  $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}</button>`).join("");
-  const b = (k, n) => `<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}">${ico(k === "config" ? "mais" : k)}<span>${n}</span></button>`;
+  const pendHoje = fixasMes(ymOf(hoje())).some(x => x.pend);
+  $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}</button>`).join("");
+  const b = (k, n) => `<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}">${ico(k === "config" ? "mais" : k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}<span>${n}</span></button>`;
   $("#bot").innerHTML = b("inicio", "Início") + b("lancamentos", "Lançam.") + '<button class="fab" data-act="novo" aria-label="Novo lançamento">+</button>' + b("cartoes", "Cartões") + b("config", "Mais");
   const main = $("#main"), top = main.scrollTop;
   main.innerHTML = !S.demo && !S.carregado ? '<div class="empty">Carregando…</div>' : V[S.view]();
@@ -377,7 +403,7 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
   const body = () => fields.filter(vis).map(f => {
     const val = v[f.k] ?? "";
     if (f.type === "seg") return `<div class="f"><div class="seg">${opts(f).map(([k, n]) => `<button type="button" class="${val === k ? "on" : ""}" data-seg="${f.k}" data-v="${k}">${n}</button>`).join("")}</div></div>`;
-    if (f.type === "check") return `<div class="f chk"><input type="checkbox" id="f-${f.k}" data-k="${f.k}" ${val ? "checked" : ""}><label for="f-${f.k}">${f.label}</label></div>`;
+    if (f.type === "check") return `<div class="f chk"><input type="checkbox" id="f-${f.k}" data-k="${f.k}" ${f.redraw ? "data-redraw" : ""} ${val ? "checked" : ""}><label for="f-${f.k}">${f.label}</label></div>`;
     if (f.type === "select") { const o = opts(f); if (!o.some(([k]) => k === val)) v[f.k] = o[0]?.[0] ?? ""; return `<div class="f"><label for="f-${f.k}">${f.label}</label><select id="f-${f.k}" data-k="${f.k}" ${f.redraw ? "data-redraw" : ""}>${o.map(([k, n]) => `<option value="${esc(k)}" ${v[f.k] === k ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`; }
     const t = f.type === "money" ? 'type="text" inputmode="decimal" placeholder="0,00"' : f.type === "number" ? 'type="number" inputmode="numeric"' : `type="${f.type || "text"}"`;
     return `<div class="f"><label for="f-${f.k}">${f.label}</label><input id="f-${f.k}" data-k="${f.k}" ${t} value="${esc(val)}" autocomplete="off"></div>`;
@@ -464,6 +490,20 @@ const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", opti
 const formPessoa = crud("pessoas", "apessoa", [{ k: "nome", label: "Nome" }, { k: "grupo", label: "Grupo", type: "select", options: GRUPOS }, { k: "cor", label: "Cor", type: "color" }],
   () => ({ nome: "", grupo: "familia", cor: "#e0564a" }), { in: o => ({ ...o, grupo: grupoDe(o) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), grupo: v.grupo || "familia", cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.pessoaId === o.id) ? "Esta pessoa tem despesas. Troque ou exclua as despesas antes." : "");
+const formFixa = crud("fixas", "aconta mensal", [{ k: "nome", label: "Nome (ex.: Água, Luz)" }, { k: "dia", label: "Dia em que costuma vencer", type: "number" }, { k: "categoriaId", label: "Categoria", type: "select", options: () => optCats("despesa") }, { k: "contaId", label: "Conta em que costuma pagar", type: "select", options: optContas }],
+  () => ({ nome: "", dia: 10 }), { in: o => o, out: v => v.nome.trim() ? { nome: v.nome.trim(), dia: Math.max(1, Math.min(31, Math.floor(Number(v.dia) || 10))), categoriaId: v.categoriaId || "", contaId: v.contaId || "" } : (toast("Informe o nome."), null) });
+function formLancarFixa(id) {
+  const f = by("fixas", id); if (!f) return; if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
+  const l = lancFixa(f), mes = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
+  openForm({ title: `${esc(f.nome)} — ${mes}`,
+    values: { valor: l ? moneyIn(l.valor) : "", vencimento: l?.vencimento || dataNoMes(S.mes, f.dia || 10), paga: !!l?.efetivada, dataPag: l?.efetivada ? l.data : hoje(), contaId: l?.contaId || f.contaId },
+    fields: [{ k: "valor", label: "Valor deste mês (R$)", type: "money" }, { k: "vencimento", label: "Data de vencimento", type: "date" }, { k: "paga", label: "Já paguei", type: "check", redraw: true },
+      { k: "dataPag", label: "Data do pagamento", type: "date", when: v => v.paga }, { k: "contaId", label: "Conta", type: "select", options: optContas }],
+    onSave: async v => { const valor = parseMoney(v.valor); if (valor <= 0 || !v.vencimento) { toast("Informe o valor e o vencimento."); return false; } if (v.paga && !v.dataPag) { toast("Informe a data do pagamento."); return false; }
+      const d = { ...(l || {}), tipo: "despesa", descricao: f.nome, valor, vencimento: v.vencimento, data: v.paga ? v.dataPag : v.vencimento, efetivada: !!v.paga, categoriaId: f.categoriaId || "", contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: l?.pessoaId || "", recorrencia: "fixa", fixaId: f.id, mesRef: S.mes };
+      l ? await store.set("lancamentos", l.id, d) : await store.add("lancamentos", d); },
+    onDelete: l ? () => store.del("lancamentos", l.id) : null, delLabel: "Apagar lançamento do mês" });
+}
 const formOrc = crud("orcamentos", "oorçamento", [{ k: "categoriaId", label: "Categoria", type: "select", options: () => optCats("despesa") }, { k: "valor", label: "Limite mensal (R$)", type: "money" }],
   () => ({ valor: "" }), { in: o => ({ ...o, valor: moneyIn(o.valor) }), out: v => { const valor = parseMoney(v.valor); return valor > 0 && v.categoriaId ? { categoriaId: v.categoriaId, valor } : (toast("Informe categoria e valor."), null); } });
 
@@ -483,7 +523,7 @@ const A = {
   novo: d => formLanc(null, d.cartao, d.pessoa),
   editL: d => formLanc(by("lancamentos", d.id)),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
-  editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => formPessoa(d.id), editOrc: d => formOrc(d.id),
+  editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => formPessoa(d.id), editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
   pagar: d => { const c = by("cartoes", d.id), valor = fatTotal(c.id, S.mes);
     openForm({ title: `Pagar fatura — ${brl(valor)}`, values: { contaId: c.contaId, data: hoje() }, fields: [{ k: "contaId", label: "Pagar com a conta", type: "select", options: optContas }, { k: "data", label: "Data do pagamento", type: "date" }],
       onSave: v => store.set("cartoes", c.id, { ...c, pagas: { ...(c.pagas || {}), [S.mes]: { contaId: v.contaId, data: v.data || hoje(), valor } } }) }); },
