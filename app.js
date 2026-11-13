@@ -171,7 +171,8 @@ function porCategoria(arr) {
 }
 
 /* ---------- componentes ---------- */
-const av = (txt, cor) => `<span class="av" style="background:${esc(cor || "#90a4ae")}">${esc(txt)}</span>`;
+const claro = cor => { const m = /^#?([0-9a-f]{6})$/i.exec(cor || ""); if (!m) return false; const n = parseInt(m[1], 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 170; };
+const av = (txt, cor) => `<span class="av" style="background:${esc(cor || "#90a4ae")}${claro(cor) ? ";color:#1f2937" : ""}">${esc(txt)}</span>`;
 const ini = n => (n || "?").trim().slice(0, 2).toUpperCase();
 function barras(rows) {
   if (!rows.length) return '<div class="empty">Sem dados neste mês.</div>';
@@ -272,7 +273,7 @@ V.cartoes = () => {
     const ab = emAberto(c), disp = r2((c.limite || 0) - ab), ft = fatTotal(c.id, m), paga = c.pagas?.[m];
     const fech = dataNoMes(m, c.fechamento || 31), st = paga ? ["Paga", "#2e9e5b"] : hoje() > fech ? ["Fechada", "#d9483b"] : ["Aberta", "#3b7ddd"];
     return `<div class="card"><div class="hd">${av(ini(c.nome), c.cor)}<div class="tx"><b>${esc(c.nome)}</b><small>${esc(c.bandeira || "Cartão de crédito")}</small></div>
-      <button class="link" data-act="novo" data-cartao="${c.id}" title="Nova despesa">＋</button><button data-act="editCartao" data-id="${c.id}" title="Editar">${ico("mais")}</button></div>
+      <button class="link mais" data-act="novo" data-cartao="${c.id}" title="Nova despesa">+</button><button data-act="editCartao" data-id="${c.id}" title="Editar">${ico("mais")}</button></div>
       <div class="tri"><div><small>Limite</small>${brl(c.limite || 0)}</div><div><small>Em aberto</small>${brl(ab)}</div><div><small>Limite disp.</small><span class="${disp < 0 ? "neg" : ""}">${brl(disp)}</span></div></div>
       <div class="prog"><i style="width:${Math.min(100, c.limite ? ab / c.limite * 100 : 0)}%;background:${esc(c.cor)}"></i></div>
       <div class="tri" style="margin-top:12px"><div><small>Conta</small>${esc(by("contas", c.contaId)?.nome || "-")}</div><div><small>Fechamento</small>${dataBR(fech).slice(0, 5)}</div><div><small>Vencimento</small>${dataBR(dataNoMes(m, c.vencimento || 10)).slice(0, 5)}</div></div>
@@ -296,7 +297,7 @@ V.pessoas = () => {
   const mesNome = MESES[Number(S.mes.slice(5)) - 1].toLowerCase();
   const card = (p, arr) => { const t = total(arr), kc = total(arr.filter(l => l.cartaoId)), c = p.id ? contaPessoa(p.id) : null;
     return `<div class="card pcard" data-act="verPessoa" data-id="${p.id}"><div class="hd">${av(ini(p.nome), p.cor)}<div class="tx"><b>${esc(p.nome)}</b><small>${arr.length} ${arr.length === 1 ? "despesa" : "despesas"} no mês</small></div>
-      <button class="link" data-act="novo" data-pessoa="${p.id}" title="Nova despesa">＋</button>${p.id ? `<button data-act="editPessoa" data-id="${p.id}" title="Editar">${ico("mais")}</button>` : ""}</div>
+      <button class="link mais" data-act="novo" data-pessoa="${p.id}" title="Nova despesa">+</button>${p.id ? `<button data-act="editPessoa" data-id="${p.id}" title="Editar">${ico("mais")}</button>` : ""}</div>
       <div class="fat"><span>Gasto em ${mesNome}</span><b class="${t > 0 ? "neg" : ""}">${brl(t)}</b></div>
       ${c ? `<div class="prog" style="margin-top:10px"><i style="width:${c.gasto > 0 ? Math.max(0, Math.min(100, c.pago / c.gasto * 100)) : 0}%;background:var(--ok)"></i></div>
       <div class="tri" style="margin-top:12px"><div><small>Total gasto</small>${brl(c.gasto)}</div><div><small>Já pagou</small><span class="pos">${brl(c.pago)}</span></div><div><small>${c.deve < -0.005 ? "Crédito" : "Ainda deve"}</small><b class="${c.deve > 0.005 ? "neg" : "pos"}">${brl(Math.abs(c.deve))}</b></div></div>
