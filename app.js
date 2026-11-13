@@ -45,6 +45,8 @@ const ico = n => `<svg class="ico" viewBox="0 0 24 24">${I[n]}</svg>`;
 const LOGO = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#3b7ddd" stroke-width="6"/><path d="M16 5a11 11 0 0 1 9.5 16.5" fill="none" stroke="#2e9e5b" stroke-width="6" stroke-linecap="round"/></svg>';
 const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["orcamentos", "Orçamentos"], ["relatorios", "Relatórios"], ["categorias", "Categorias"], ["config", "Ajustes"]];
 const EMOJIS = ["🍽️","🛒","🏠","🚗","⛽","💊","🎓","🎮","👨‍👩‍👧","👕","✈️","📱","💡","🐶","🎁","💼","💰","🛍️","📅","🏋️","☕","🧾","📦","➕"];
+const GRUPOS = [["familia", "Família"], ["parentes", "Parentes"], ["amigos", "Amigos"]];
+const grupoDe = p => GRUPOS.some(([k]) => k === p.grupo) ? p.grupo : "familia";
 const CATS_PADRAO = [
   ["Alimentação","🍽️","#f5b335","despesa"],["Mercado","🛒","#f29a38","despesa"],["Moradia","🏠","#7e57c2","despesa"],["Carro","🚗","#e0564a","despesa"],
   ["Contas fixas","📅","#4a9be0","despesa"],["Saúde","💊","#e57373","despesa"],["Educação","🎓","#2f8f83","despesa"],["Lazer","🎮","#3f51b5","despesa"],
@@ -119,7 +121,7 @@ function semearDemo() {
     { ...L("despesa", "Supermercado", 890, 14, "Mercado"), data: dataNoMes(ant, 14) },
     { id: id(), tipo: "despesa", descricao: "Restaurante", valor: 142, data: dataNoMes(ant, 25), categoriaId: c("Alimentação"), contaId: "", cartaoId: "k", efetivada: true, recorrencia: "variavel" }
   ];
-  D.pessoas = [{ id: "m", nome: "Mãe", cor: "#e0564a" }, { id: "i", nome: "Irmão", cor: "#2f8f83" }];
+  D.pessoas = [{ id: "m", nome: "Mãe", cor: "#e0564a", grupo: "familia" }, { id: "i", nome: "Irmão", cor: "#2f8f83", grupo: "familia" }, { id: "t", nome: "Tia", cor: "#7e57c2", grupo: "parentes" }, { id: "x", nome: "Amigo", cor: "#f29a38", grupo: "amigos" }];
   D.lancamentos.filter(l => ["Farmácia", "Supermercado"].includes(l.descricao)).forEach(l => l.pessoaId = "m");
   D.lancamentos.filter(l => ["Notebook 2/6", "Cinema"].includes(l.descricao)).forEach(l => l.pessoaId = "i");
   D.orcamentos = [{ id: id(), categoriaId: c("Mercado"), valor: 900 }, { id: id(), categoriaId: c("Alimentação"), valor: 300 }, { id: id(), categoriaId: c("Lazer"), valor: 200 }];
@@ -293,10 +295,10 @@ function contaPessoa(pid, ym = S.mes) {
 }
 const gastosDe = pid => doMes("despesa").filter(l => l.pessoaId === pid);
 V.pessoas = () => {
-  const ps = [...S.data.pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), tudo = total(doMes("despesa")) || 1, validos = new Set(ps.map(p => p.id));
+  const ps = [...S.data.pessoas].sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || a.nome.localeCompare(b.nome)), tudo = total(doMes("despesa")) || 1, validos = new Set(ps.map(p => p.id));
   const mesNome = MESES[Number(S.mes.slice(5)) - 1].toLowerCase();
   const card = (p, arr) => { const t = total(arr), kc = total(arr.filter(l => l.cartaoId)), c = p.id ? contaPessoa(p.id) : null;
-    return `<div class="card pcard" data-act="verPessoa" data-id="${p.id}"><div class="hd">${av(ini(p.nome), p.cor)}<div class="tx"><b>${esc(p.nome)}</b><small>${arr.length} ${arr.length === 1 ? "despesa" : "despesas"} no mês</small></div>
+    return `<div class="card pcard" data-act="verPessoa" data-id="${p.id}"><div class="hd">${p.id ? '<span class="grip" data-act="nada" title="Arrastar para mudar de grupo ou de ordem" aria-label="Arrastar">⠿</span>' : ""}${av(ini(p.nome), p.cor)}<div class="tx"><b>${esc(p.nome)}</b><small>${arr.length} ${arr.length === 1 ? "despesa" : "despesas"} no mês</small></div>
       <button class="link mais" data-act="novo" data-pessoa="${p.id}" title="Nova despesa">+</button>${p.id ? `<button data-act="editPessoa" data-id="${p.id}" title="Editar">${ico("mais")}</button>` : ""}</div>
       <div class="fat"><span>Gasto em ${mesNome}</span><b class="${t > 0 ? "neg" : ""}">${brl(t)}</b></div>
       ${c ? `<div class="prog" style="margin-top:10px"><i style="width:${c.gasto > 0 ? Math.max(0, Math.min(100, c.pago / c.gasto * 100)) : 0}%;background:var(--ok)"></i></div>
@@ -307,9 +309,12 @@ V.pessoas = () => {
   const meus = doMes("despesa").filter(l => !validos.has(l.pessoaId));
   const outros = r2(ps.reduce((s0, p) => s0 + total(gastosDe(p.id)), 0));
   return `<div class="tools"><h2 style="flex:1">Gastos por pessoa</h2><button class="btn" data-act="editPessoa">Nova pessoa</button></div>
-  <div class="grid cc">${card({ id: "", nome: "Eu", cor: "#3b7ddd" }, meus)}${ps.map(p => card(p, gastosDe(p.id))).join("")}</div>
+  <div class="grid cc">${card({ id: "", nome: "Eu", cor: "#3b7ddd" }, meus)}</div>
+  ${GRUPOS.map(([k, n]) => { const g = ps.filter(p => grupoDe(p) === k), deve = r2(g.reduce((s0, p) => s0 + Math.max(0, contaPessoa(p.id).deve), 0));
+    return `<div class="gh"><h3>${n}</h3><span>${g.length} ${g.length === 1 ? "pessoa" : "pessoas"} · a receber <b class="${deve > 0 ? "neg" : ""}">${brl(deve)}</b></span></div>
+    <div class="grid cc pgrp" data-grupo="${k}">${g.map(p => card(p, gastosDe(p.id))).join("")}<div class="vazio">Arraste alguém para cá</div></div>`; }).join("")}
   <div class="sum"><span>Meus gastos no mês: <b>${brl(total(meus))}</b></span><span>Gastos de outras pessoas no mês: <b>${brl(outros)}</b></span><span>Total a receber até ${mesNome}: <b class="neg">${brl(r2(ps.reduce((s0, p) => s0 + Math.max(0, contaPessoa(p.id).deve), 0)))}</b></span></div>
-  ${ps.length ? '<div class="sum">Total gasto, já pagou e ainda deve somam tudo desde o início até o mês selecionado.</div>' : ""}
+  <div class="sum">${ps.length ? "Total gasto, já pagou e ainda deve somam tudo desde o início até o mês selecionado. Arraste pelo botão ⠿ para mudar a pessoa de grupo ou de ordem." : ""}</div>
   ${ps.length ? "" : '<div class="sum">Cadastre as pessoas da casa e, em cada despesa, escolha de quem é o gasto.</div>'}`;
 };
 function orcLista(curto) {
@@ -456,8 +461,8 @@ const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", opti
   () => ({ tipo: "despesa", nome: "", icone: "📦", cor: "#4a9be0" }),
   { in: o => o, out: v => v.nome.trim() ? { tipo: v.tipo, nome: v.nome.trim(), icone: v.icone, cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.categoriaId === o.id) ? "Esta categoria tem lançamentos." : S.data.orcamentos.some(x => x.categoriaId === o.id) ? "Esta categoria tem orçamento." : "");
-const formPessoa = crud("pessoas", "apessoa", [{ k: "nome", label: "Nome" }, { k: "cor", label: "Cor", type: "color" }],
-  () => ({ nome: "", cor: "#e0564a" }), { in: o => o, out: v => v.nome.trim() ? { nome: v.nome.trim(), cor: v.cor } : (toast("Informe o nome."), null) },
+const formPessoa = crud("pessoas", "apessoa", [{ k: "nome", label: "Nome" }, { k: "grupo", label: "Grupo", type: "select", options: GRUPOS }, { k: "cor", label: "Cor", type: "color" }],
+  () => ({ nome: "", grupo: "familia", cor: "#e0564a" }), { in: o => ({ ...o, grupo: grupoDe(o) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), grupo: v.grupo || "familia", cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.pessoaId === o.id) ? "Esta pessoa tem despesas. Troque ou exclua as despesas antes." : "");
 const formOrc = crud("orcamentos", "oorçamento", [{ k: "categoriaId", label: "Categoria", type: "select", options: () => optCats("despesa") }, { k: "valor", label: "Limite mensal (R$)", type: "money" }],
   () => ({ valor: "" }), { in: o => ({ ...o, valor: moneyIn(o.valor) }), out: v => { const valor = parseMoney(v.valor); return valor > 0 && v.categoriaId ? { categoriaId: v.categoriaId, valor } : (toast("Informe categoria e valor."), null); } });
@@ -512,6 +517,29 @@ document.addEventListener("input", e => { if (e.target.id === "busca") { S.busca
 document.addEventListener("pointerdown", e => {
   const g = e.target.closest(".grip"); if (!g) return;
   e.preventDefault();
+  const pc = g.closest(".pcard");
+  if (pc) {
+    pc.classList.add("drag"); document.body.classList.add("arrastando");
+    let ult = e, vivo = true; const main = $("#main");
+    const rolar = () => { if (!vivo) return; const r = main.getBoundingClientRect(), y = ult.clientY, v = y > r.bottom - 70 ? 14 : y < r.top + 50 ? -14 : 0;
+      if (v) { const antes = main.scrollTop; main.scrollTop += v; if (main.scrollTop !== antes) move(ult); } requestAnimationFrame(rolar); };
+    requestAnimationFrame(rolar);
+    const move = ev => { ult = ev;
+      const el = document.elementFromPoint(ev.clientX, ev.clientY), grp = el?.closest(".pgrp"); if (!grp) return;
+      const alvo = el.closest(".pcard");
+      if (alvo && alvo !== pc) { const b = alvo.getBoundingClientRect(); grp.insertBefore(pc, ev.clientX < b.left + b.width / 2 ? alvo : alvo.nextSibling); }
+      else if (!alvo && pc.parentNode !== grp) grp.insertBefore(pc, grp.querySelector(".vazio"));
+    };
+    const fim = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", fim); window.removeEventListener("pointercancel", fim);
+      vivo = false; pc.classList.remove("drag"); document.body.classList.remove("arrastando");
+      const mud = [];
+      document.querySelectorAll(".pgrp").forEach(grp => [...grp.querySelectorAll(".pcard")].forEach((c, i) => { const p = by("pessoas", c.dataset.id); if (p && (p.ordem !== i || grupoDe(p) !== grp.dataset.grupo || p.grupo !== grp.dataset.grupo)) mud.push(store.set("pessoas", p.id, { ...p, ordem: i, grupo: grp.dataset.grupo })); }));
+      Promise.all(mud).then(() => render()).catch(err => toast("Não foi possível salvar: " + (err.code || err.message)));
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", fim); window.addEventListener("pointercancel", fim);
+    return;
+  }
   const tr = g.closest("tr"), tb = tr.parentNode; tr.classList.add("drag");
   const move = ev => {
     const alvo = [...tb.children].filter(r => r !== tr).find(r => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
