@@ -423,7 +423,7 @@ function statusFixa(f, ym = S.mes) {
   if (l) return { k: atras ? 0 : 1, l, venc, txt: `${atras ? "Venceu" : "Vence"} em ${dm(venc)}`, tag: atras ? "Atrasada" : "A pagar", cor: atras ? "#d9483b" : "#f29a38", pend };
   return { k: atras ? 0 : 2, l, venc, txt: `Falta lançar · ${atras && pend ? "venceu" : "vence"} dia ${pad(Number(venc.slice(8)))}`, tag: "Lançar", cor: atras && pend ? "#d9483b" : "#3b7ddd", pend };
 }
-const fixasMes = (ym = S.mes) => S.data.fixas.map(f => ({ f, ...statusFixa(f, ym) })).sort((a, b) => a.k - b.k || a.venc.localeCompare(b.venc));
+const fixasMes = (ym = S.mes) => S.data.fixas.map(f => ({ f, ...statusFixa(f, ym) })).sort((a, b) => a.venc.localeCompare(b.venc) || a.f.nome.localeCompare(b.f.nome));
 function cardFixas() {
   const fs = fixasMes(), pagas = fs.filter(x => x.k === 3).length, tot = r2(fs.reduce((s0, x) => s0 + (x.l?.valor || 0), 0));
   return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>
