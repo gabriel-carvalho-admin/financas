@@ -432,10 +432,12 @@ function cardFixas() {
     || '<div class="empty">Cadastre água, luz, internet… e o app lembra você todo mês.</div>'}
   ${fs.length ? `<div class="sum">${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b></div>` : ""}</div>`;
 }
+// O aviso só aparece quando chega o dia do vencimento (ou depois) e a conta mensal ainda não foi paga
+const fixasVencidas = (ym = S.mes) => fixasMes(ym).filter(x => x.k !== 3 && x.venc <= hoje());
 function avisoFixas() {
-  const p = fixasMes().filter(x => x.pend); if (!p.length) return "";
-  const at = p.filter(x => x.k === 0).length;
-  return `<div class="aviso ${at ? "ruim" : ""}" data-act="lancarFixa" data-id="${p[0].f.id}"><b>${at ? "⚠" : "🔔"} ${p.length} ${p.length === 1 ? "conta mensal pendente" : "contas mensais pendentes"}${at ? ` (${at} ${at === 1 ? "vencida" : "vencidas"})` : ""}:</b> ${p.map(x => `${esc(x.f.nome)} — ${x.txt.toLowerCase()}`).join(" · ")}</div>`;
+  const p = fixasVencidas(); if (!p.length) return "";
+  const at = p.filter(x => x.venc < hoje()).length, quando = x => x.venc === hoje() ? "vence hoje" : `venceu em ${dataBR(x.venc).slice(0, 5)}`;
+  return `<div class="aviso ${at ? "ruim" : ""}" data-act="lancarFixa" data-id="${p[0].f.id}"><b>${at ? "⚠" : "🔔"} ${p.length} ${p.length === 1 ? "conta mensal para pagar" : "contas mensais para pagar"}:</b> ${p.map(x => `${esc(x.f.nome)} — ${quando(x)}${x.l ? " · " + brl(x.l.valor) : " · falta lançar o valor"}`).join(" · ")}</div>`;
 }
 const emprestimos = (pid, ym = S.mes) => S.data.lancamentos.filter(l => l.emprestimo && l.pessoaId === pid && l.data <= `${ym}-31`).sort((a, b) => b.data.localeCompare(a.data));
 function formEmprestimo(pid, id) {
@@ -743,7 +745,7 @@ function draw() {
       <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="drawer"></div><div id="modal"></div>`;
   }
   $("#mlbl").textContent = S.view === "inicio" && S.per !== "mes" ? periodo().label.replace("Ano de ", "") : `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
-  const pendHoje = fixasMes(ymOf(hoje())).some(x => x.pend);
+  const pendHoje = fixasVencidas(ymOf(hoje())).length > 0;
   $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" || k === "energia" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}</button>`).join("");
   const b = (k, n) => `<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}">${ico(k === "config" ? "mais" : k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}<span>${n}</span></button>`;
   $("#bot").innerHTML = b("inicio", "Início") + b("lancamentos", "Lançam.") + '<button class="fab" data-act="novo" aria-label="Novo lançamento">+</button>' + b("cartoes", "Cartões") + `<button data-act="menu">${ico("menu")}<span>Menu</span></button>`;
