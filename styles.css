@@ -217,10 +217,11 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .impi .impn{grid-column:1/-1;font-weight:600}
 .impi select,.impi input[data-imp=subgrupo]{grid-column:span 1;width:100%}
 .impi>select:first-of-type{grid-column:1/3}
-.impo{grid-column:1/-1;color:var(--mut);font-size:12px;margin-top:-4px}
+.impp{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:var(--mut);font-size:12.5px}
+.impp input{width:64px;height:34px;border:1px solid var(--line);border-radius:10px;padding:0 8px;background:var(--card);text-align:center}
 .impck{display:flex;align-items:center;gap:8px;font-weight:600}
 .impck input{width:18px;height:18px}
-@media(min-width:721px){.impi{grid-template-columns:auto auto auto 1.6fr 1fr 1fr auto}.impi .impn{grid-column:auto}.impi .impo{order:9}.impi>select:first-of-type{grid-column:auto}.impi .tag{justify-self:start}}
+@media(min-width:721px){.impi{grid-template-columns:auto auto auto 1.6fr 1fr 1fr auto}.impi .impn{grid-column:auto}.impi .impp{order:9}.impi>select:first-of-type{grid-column:auto}.impi .tag{justify-self:start}}
 
 /* login */
 .login{min-height:100%;display:grid;place-items:center;padding:20px}

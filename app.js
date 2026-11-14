@@ -801,8 +801,8 @@ const optCats = t => S.data.categorias.filter(c => c.tipo === t).sort((a, b) => 
 function formLanc(orig, cartaoId, pessoaId, dataPre) {
   if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
   const ed = !!orig, o = orig || {};
-  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", subgrupo: o.subgrupo || "", destino: o.contaDestinoId, efetivada: o.efetivada, repetir: "variavel", parcelas: 2 }
-    : { tipo: "despesa", descricao: "", valor: "", data: dataPre || (ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`), origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", subgrupo: "", efetivada: true, repetir: "variavel", parcelas: 2 };
+  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", subgrupo: o.subgrupo || "", destino: o.contaDestinoId, efetivada: o.efetivada, parcelaEd: o.parcela || "", parcelasEd: o.parcelas || "", repetir: "variavel", parcelas: 2 }
+    : { tipo: "despesa", descricao: "", valor: "", data: dataPre || (ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`), origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", subgrupo: "", efetivada: true, repetir: "variavel", parcelas: 2, parcelaAtual: 1, valorTipo: "total" };
   openForm({
     title: ed ? "Editar lançamento" : "Novo lançamento", values,
     fields: [
@@ -817,7 +817,11 @@ function formLanc(orig, cartaoId, pessoaId, dataPre) {
       { k: "destino", label: "Conta de destino", type: "select", options: optContas, when: v => v.tipo === "transferencia" },
       { k: "efetivada", label: "Já foi paga / recebida", type: "check", when: v => !(v.tipo === "despesa" && v.origem?.startsWith("k:")) },
       { k: "repetir", label: "Repetição", type: "select", redraw: true, options: [["variavel", "Não repete"], ["fixa", "Fixa mensal (próximos 12 meses)"], ["parcelada", "Parcelada"]], when: v => !ed && v.tipo !== "transferencia" },
-      { k: "parcelas", label: "Número de parcelas (o valor acima é o total)", type: "number", when: v => !ed && v.tipo !== "transferencia" && v.repetir === "parcelada" }
+      { k: "parcelas", label: "Em quantas vezes foi parcelado", type: "number", when: v => !ed && v.tipo !== "transferencia" && v.repetir === "parcelada" },
+      { k: "parcelaAtual", label: "Qual parcela é esta (1 = a primeira)", type: "number", when: v => !ed && v.tipo !== "transferencia" && v.repetir === "parcelada" },
+      { k: "valorTipo", label: "O valor informado acima é", type: "select", options: [["total", "o total da compra (o app divide pelas parcelas)"], ["parcela", "o valor de cada parcela"]], when: v => !ed && v.tipo !== "transferencia" && v.repetir === "parcelada" },
+      { k: "parcelaEd", label: "Parcela nº (deixe vazio se não é parcelado)", type: "number", when: v => ed && v.tipo === "despesa" && !o.emprestimo },
+      { k: "parcelasEd", label: "De quantas parcelas", type: "number", when: v => ed && v.tipo === "despesa" && !o.emprestimo }
     ],
     onSave: async v => {
       const valor = parseMoney(v.valor); if (valor <= 0) { toast("Informe um valor maior que zero."); return false; }
@@ -826,12 +830,20 @@ function formLanc(orig, cartaoId, pessoaId, dataPre) {
       if (v.tipo === "transferencia" && v.destino === id) { toast("Escolha contas diferentes."); return false; }
       const b = { tipo: v.tipo, descricao: v.descricao.trim() || (v.tipo === "transferencia" ? "Transferência" : cat(v.categoriaId).nome), valor, data: v.data,
         categoriaId: v.tipo === "transferencia" || o.reembolso ? "" : v.categoriaId || "", subgrupo: v.tipo === "transferencia" || o.reembolso ? "" : (v.subgrupo || "").trim(), contaId: noCartao ? "" : id, cartaoId: noCartao ? id : "", contaDestinoId: v.tipo === "transferencia" ? v.destino : "", pessoaId: v.tipo === "despesa" ? v.pessoaId || "" : o.reembolso ? o.pessoaId : "", efetivada: noCartao ? true : !!v.efetivada };
-      if (ed) return void await store.set("lancamentos", o.id, { ...o, ...b });
+      if (ed) { const d = { ...o, ...b };
+        if (v.tipo === "despesa" && !o.emprestimo) { const pt = Math.floor(Number(v.parcelasEd) || 0), pa = Math.floor(Number(v.parcelaEd) || 0);
+          if (pt > 1 && pa >= 1 && pa <= pt) Object.assign(d, { parcela: pa, parcelas: pt, recorrencia: "parcelada" });
+          else if (String(v.parcelaEd ?? "").trim() === "" && String(v.parcelasEd ?? "").trim() === "") { delete d.parcela; delete d.parcelas; if (d.recorrencia === "parcelada") d.recorrencia = "variavel"; }
+          else { toast("Confira a parcela: o número precisa estar entre 1 e o total."); return false; } }
+        return void await store.set("lancamentos", o.id, d); }
       const rep = v.tipo === "transferencia" ? "variavel" : v.repetir;
       if (rep === "variavel") return void await store.add("lancamentos", { ...b, recorrencia: "variavel" });
-      const n = rep === "fixa" ? 12 : Math.max(2, Math.min(72, Math.floor(Number(v.parcelas) || 2))), g = uid(), cada = r2(valor / n);
-      await store.addMany("lancamentos", Array.from({ length: n }, (_, i) => ({ ...b, recorrencia: rep, grupoId: g, data: addMesData(v.data, i), efetivada: noCartao ? true : i === 0 && b.efetivada,
-        ...(rep === "parcelada" ? { valor: i === n - 1 ? r2(valor - cada * (n - 1)) : cada, parcela: i + 1, parcelas: n } : {}) })));
+      const g = uid();
+      if (rep === "fixa") return void await store.addMany("lancamentos", Array.from({ length: 12 }, (_, i) => ({ ...b, recorrencia: rep, grupoId: g, data: addMesData(v.data, i), efetivada: noCartao ? true : i === 0 && b.efetivada })));
+      // Parcelada: lança da parcela informada até a última, uma por mês a partir da data escolhida
+      const n = Math.max(2, Math.min(120, Math.floor(Number(v.parcelas) || 2))), a = Math.max(1, Math.min(n, Math.floor(Number(v.parcelaAtual) || 1))), porParcela = v.valorTipo === "parcela", cada = porParcela ? valor : r2(valor / n);
+      await store.addMany("lancamentos", Array.from({ length: n - a + 1 }, (_, i) => ({ ...b, recorrencia: rep, grupoId: g, data: addMesData(v.data, i), efetivada: noCartao ? true : i === 0 && b.efetivada,
+        valor: !porParcela && a + i === n ? r2(valor - cada * (n - 1)) : cada, parcela: a + i, parcelas: n })));
     },
     onDelete: ed ? () => store.del("lancamentos", o.id) : null,
     extra: ed && o.grupoId ? { label: "Excluir este e os próximos", fn: () => store.del("lancamentos", S.data.lancamentos.filter(l => l.grupoId === o.grupoId && l.data >= o.data).map(l => l.id)) } : null
@@ -963,7 +975,9 @@ const A = {
   impAplicar: () => { const cId = $("#impcat").value, sg = $("#impsub").value.trim(); if (!cId && !sg) return toast("Escolha uma categoria ou digite um subgrupo.");
     IMP.itens.filter(x => x.on).forEach(x => { if (cId) x.categoriaId = cId; if (sg) x.subgrupo = sg; }); telaImportar(); },
   impSalvar: async () => { const sel = IMP.itens.filter(x => x.on); if (!sel.length) return toast("Marque pelo menos uma compra.");
-    const novos = sel.map(x => { const p = x.parcela ? [0, ...x.parcela] : null, parc = !!p, naFatura = IMP.modo === "fatura";
+    const ruim = sel.find(x => { const a = String(x.pA ?? "").trim(), t = String(x.pT ?? "").trim(); return (a || t) && !(Number(t) > 1 && Number(a) >= 1 && Number(a) <= Number(t)); });
+    if (ruim) return toast(`Confira a parcela de "${ruim.nome}": informe o número e o total (ex.: 3 de 10).`);
+    const novos = sel.map(x => { const p = Number(x.pT) > 1 ? [0, Math.floor(Number(x.pA)), Math.floor(Number(x.pT))] : null, parc = !!p, naFatura = IMP.modo === "fatura";
       // No modo "tudo nesta fatura", a parcela 9/10 de uma compra de fevereiro é lançada na data da 9ª parcela, não na data da compra
       let data = naFatura && parc && p[1] > 1 ? addMesData(x.data, p[1] - 1) : x.data;
       if (naFatura && data > `${S.mes}-31`) data = x.data;
@@ -1041,7 +1055,7 @@ async function importarArquivo(cartaoId, file) {
     const credito = compraNeg ? x.valor > 0 : x.valor < 0, valor = Math.abs(x.valor), importId = x.fit || `${x.data}|${valor}|${norm(x.nome)}${parcela ? "|" + parcela.join("/") : ""}`, h = hist.get(norm(x.nome));
     const dup = doCartao.some(l => l.importId === importId || ((l.dataCompra || l.data) === x.data && l.valor === valor && norm(l.descOrig || l.descricao) === norm(x.nome)));
     const talvez = !dup && !credito && doCartao.some(l => (l.dataCompra || l.data) === x.data && l.valor === valor);
-    return { on: !credito && !dup && !talvez, credito, dup, talvez, parcela, obs: x.obs || "", data: x.data, valor, descOrig: x.nome, nome: h?.descricao || x.nome, categoriaId: h?.categoriaId || "", subgrupo: h?.subgrupo || "", pessoaId: h?.pessoaId || "", importId };
+    return { on: !credito && !dup && !talvez, credito, dup, talvez, parcela, pA: parcela ? parcela[0] : "", pT: parcela ? parcela[1] : "", obs: x.obs || "", data: x.data, valor, descOrig: x.nome, nome: h?.descricao || x.nome, categoriaId: h?.categoriaId || "", subgrupo: h?.subgrupo || "", pessoaId: h?.pessoaId || "", importId };
   }).sort((a, b) => a.data.localeCompare(b.data)) };
   telaImportar();
 }
@@ -1057,7 +1071,7 @@ function telaImportar() {
       <label class="impck"><input type="checkbox" data-imp="on" ${x.on ? "checked" : ""}> <span>${dataBR(x.data)}</span></label><b class="${x.credito ? "pos" : "neg"}">${brl(x.valor)}</b>
       ${x.dup ? '<span class="tag" style="background:#f29a38">Já importada</span>' : x.talvez ? '<span class="tag" style="background:#f29a38" title="Já existe neste cartão uma compra com a mesma data e o mesmo valor">Possível repetida</span>' : x.credito ? '<span class="tag" style="background:#2e9e5b">Pagamento / estorno</span>' : "<span></span>"}
       <input class="impn" type="text" data-imp="nome" value="${esc(x.nome)}" title="Nome original: ${esc(x.descOrig)}" autocomplete="off">
-      ${x.parcela || x.obs ? `<small class="impo">${[x.parcela ? `Parcela ${x.parcela[0]}/${x.parcela[1]}` : "", esc(x.obs)].filter(Boolean).join(" · ")}</small>` : ""}
+      <div class="impp"><span>Parcela</span><input type="number" inputmode="numeric" min="1" data-imp="pA" value="${esc(x.pA)}" placeholder="nº" aria-label="Número da parcela"><span>de</span><input type="number" inputmode="numeric" min="1" data-imp="pT" value="${esc(x.pT)}" placeholder="total" aria-label="Total de parcelas">${x.obs ? `<small>${esc(x.obs)}</small>` : ""}</div>
       ${selCat(x.categoriaId, 'data-imp="categoriaId"')}<input type="text" data-imp="subgrupo" value="${esc(x.subgrupo)}" placeholder="Subgrupo" autocomplete="off">
       ${ps.length ? `<select data-imp="pessoaId"><option value="">Eu</option>${ps.map(p => `<option value="${p.id}" ${p.id === x.pessoaId ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>` : ""}</div>`).join("")}</div>
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Cancelar</button><button class="btn" data-act="impSalvar">Importar marcadas</button></div></div></div>`;
