@@ -139,7 +139,10 @@ function semearDemo() {
     M("p1", "gasto", "Carnes", 2100, dataNoMes(m, 8), "Buffet", "Carnes"), M("p1", "gasto", "Bebidas", 1350, dataNoMes(m, 9), "Bebidas", "Refrigerante e água"), M("p1", "gasto", "Flores", 1800, dataNoMes(m, 3), "Decoração", "Flores"),
     M("p1", "gasto", "Toalhas e sousplat", 650, dataNoMes(ant, 28), "Decoração", "Locação de peças"), M("p1", "gasto", "Garçons", 1200, dataNoMes(m, 11), "Equipe", "Garçons"), M("p1", "gasto", "Sobremesas", 900, dataNoMes(m, 10), "Buffet", "Doces"),
     M("p2", "recebimento", "Pagamento integral", 9000, dataNoMes(ant, 15)), M("p2", "gasto", "Buffet completo", 4200, dataNoMes(ant, 18), "Buffet", "Salgados"), M("p2", "gasto", "DJ", 1500, dataNoMes(ant, 20), "Som e luz", "DJ")];
-  D.energia = [[addMes(m, -2), 310, 420, 780, 668], [addMes(m, -1), 355, 380, 735, 712], [m, 402, 301, 690, 795]].map(([mes, consumido, injetado, gerado, medidor]) => ({ id: mes, mes, data: `${mes}-12`, consumido, injetado, gerado, medidor, valor: 0, creditoFatura: "" }));
+  D.energia = [{ id: "e0", data: dataNoMes(addMes(m, -3), 14), gerAcum: 70000, medAcum: 34000 },
+    { id: "e1", data: dataNoMes(addMes(m, -2), 12), consumido: 310, injetado: 420, gerAcum: 70780, solData: dataNoMes(addMes(m, -2), 14), medAcum: 34668, medData: dataNoMes(addMes(m, -2), 14) },
+    { id: "e2", data: dataNoMes(addMes(m, -1), 12), consumido: 355, injetado: 380, gerAcum: 71515, medAcum: 35380 },
+    { id: "e3", data: dataNoMes(m, 9), consumido: 402, injetado: 301 }, { id: "e4", data: dataNoMes(m, 13), gerAcum: 72260, medAcum: 36230 }].map(e => ({ mes: ymOf(e.data), creditoFatura: "", valor: 0, ...e }));
   D.config = [{ id: "energia", creditoInicial: 150 }];
   D.orcamentos = [{ id: id(), categoriaId: c("Mercado"), valor: 900 }, { id: id(), categoriaId: c("Alimentação"), valor: 300 }, { id: id(), categoriaId: c("Lazer"), valor: 200 }];
 }
@@ -454,17 +457,31 @@ const numE = v => v === "" || v == null ? null : parseMoney(v);
 // créditos do mês = injetado − consumido da rede; estoque = soma acumulada (nunca abaixo de zero)
 const dataLeit = e => e.data || `${e.mes}-01`;
 const diasEntre = (a, b) => Math.round((Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8)) - Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8))) / 864e5);
-// Cada fonte (Equatorial, Solplanet, medidor) pode ter sido lida em dias diferentes. Para padronizar, cada lançamento vira
-// uma média por dia no seu próprio intervalo, e o app recalcula quanto cabe no período da Equatorial.
-function segmentos(campoValor, campoFim, campoIni) {
+// Cada fonte (Equatorial, Solplanet, medidor) pode ser lida em dias diferentes. A Equatorial informa o total do período (fatura);
+// o inversor e o medidor mostram um número acumulado, então o consumo sai da diferença entre duas leituras. Cada trecho vira uma
+// média por dia e o app recalcula quanto cabe exatamente nos dias da Equatorial.
+const temEq = e => (Number(e.consumido) || 0) > 0 || (Number(e.injetado) || 0) > 0;
+function segEquatorial() {
   let ant = null; const out = [];
-  for (const e of [...S.data.energia].sort((a, b) => (e2 => e2[campoFim] || dataLeit(e2))(a).localeCompare((e2 => e2[campoFim] || dataLeit(e2))(b)))) {
-    const fim = e[campoFim] || dataLeit(e), v = Number(e[campoValor]) || 0;
-    if (campoValor !== "consumido" && v <= 0) continue;
-    let ini = e[campoIni] || ant || addDias(fim, -30), estimado = !e[campoIni] && !ant; if (ini >= fim) ini = addDias(fim, -1);
-    out.push({ id: e.id, ini, fim, dias: diasEntre(ini, fim), v, taxa: v / diasEntre(ini, fim), estimado }); ant = fim;
+  for (const e of S.data.energia.filter(temEq).sort((a, b) => dataLeit(a).localeCompare(dataLeit(b)))) {
+    const fim = dataLeit(e); let ini = e.eqIni || ant || addDias(fim, -30); const estimado = !e.eqIni && !ant; if (ini >= fim) ini = addDias(fim, -1);
+    out.push({ id: e.id, ini, fim, dias: diasEntre(ini, fim), estimado }); ant = fim;
   }
   return out;
+}
+function segFonte(acumK, valK, fimK, iniK) {
+  let ant = null, antAcum = null, antAcumData = null; const out = [], fimDe = e => e[fimK] || dataLeit(e);
+  for (const e of [...S.data.energia].sort((a, b) => fimDe(a).localeCompare(fimDe(b)))) {
+    const fim = fimDe(e), a = Number(e[acumK]) || 0, v = Number(e[valK]) || 0;
+    if (a > 0) {
+      if (antAcum != null && fim > antAcumData && a >= antAcum) { const dias = diasEntre(antAcumData, fim); out.push({ id: e.id, ini: antAcumData, fim, dias, v: r2(a - antAcum), taxa: (a - antAcum) / dias, de: antAcum, ate: a, acum: true }); }
+      antAcum = a; antAcumData = fim; ant = fim;
+    } else if (v > 0) {
+      let ini = e[iniK] || ant || addDias(fim, -30); const estimado = !e[iniK] && !ant; if (ini >= fim) ini = addDias(fim, -1);
+      const dias = diasEntre(ini, fim); out.push({ id: e.id, ini, fim, dias, v, taxa: v / dias, estimado }); ant = fim;
+    }
+  }
+  return { segs: out, leituras: S.data.energia.filter(e => (Number(e[acumK]) || 0) > 0).length };
 }
 // Energia de uma fonte dentro do intervalo (a, b]: soma dias × média diária; dias sem leitura usam a média do trecho mais próximo
 function energiaNo(segs, a, b) {
@@ -474,26 +491,26 @@ function energiaNo(segs, a, b) {
     if (!sg) { fora++; sg = segs.find(x => x.ini >= d) || segs[segs.length - 1]; }
     tot += sg.taxa;
   }
-  return { v: r2(tot), fora };
+  return { v: r2(tot), fora, usados: segs.filter(x => x.fim > a && x.ini < b) };
 }
 function energiaCalc() {
   let estoque = Number(by("config", "energia")?.creditoInicial) || 0;
-  const eq = segmentos("consumido", "data", "eqIni"), sol = segmentos("gerado", "solData", "solIni"), med = segmentos("medidor", "medData", "medIni");
-  return eq.map(q => {
-    const e = by("energia", q.id), cons = e.consumido || 0, inj = e.injetado || 0, g = energiaNo(sol, q.ini, q.fim), mm = energiaNo(med, q.ini, q.fim), sS = sol.find(x => x.id === e.id), sM = med.find(x => x.id === e.id);
-    const ger = g ? g.v : 0, direto = r2(ger - inj), casa = r2(cons + direto), saldoMes = r2(inj - cons), antes = estoque;
+  const sol = segFonte("gerAcum", "gerado", "solData", "solIni"), med = segFonte("medAcum", "medidor", "medData", "medIni");
+  return segEquatorial().map(q => {
+    const e = by("energia", q.id), cons = e.consumido || 0, inj = e.injetado || 0, g = energiaNo(sol.segs, q.ini, q.fim), mm = energiaNo(med.segs, q.ini, q.fim);
+    const ger = g ? g.v : null, direto = g ? r2(ger - inj) : null, casa = g ? r2(cons + direto) : null, saldoMes = r2(inj - cons), antes = estoque;
     const usados = saldoMes < 0 ? Math.min(antes, -saldoMes) : 0, pagar = saldoMes < 0 ? r2(-saldoMes - usados) : 0;
     estoque = r2(Math.max(0, antes + saldoMes));
     const informado = e.creditoFatura !== "" && e.creditoFatura != null; if (informado) estoque = Number(e.creditoFatura) || 0;
-    const difer = sg => sg && (sg.ini !== q.ini || sg.fim !== q.fim);
-    return { e, data: q.fim, de: q.ini, dias: q.dias, estimado: q.estimado, cons, inj, ger, gerInf: sS, gerAj: difer(sS) || (!sS && !!g), medInf: sM, medAj: difer(sM) || (!sM && !!mm),
-      direto, casa, saldoMes, usados: r2(usados), pagar, estoque, informado, med: mm ? mm.v : 0, dif: mm ? r2(mm.v - casa) : null,
+    const exato = (r, sg) => r && r.fora === 0 && r.usados.length === 1 && r.usados[0].ini === q.ini && r.usados[0].fim === q.fim;
+    return { e, data: q.fim, de: q.ini, dias: q.dias, estimado: q.estimado, cons, inj, ger, g, gerAj: !!g && !exato(g), mm, medAj: !!mm && !exato(mm), solLeit: sol.leituras, medLeit: med.leituras,
+      direto, casa, saldoMes, usados: r2(usados), pagar, estoque, informado, med: mm ? mm.v : null, dif: mm && g ? r2(mm.v - casa) : null,
       pAuto: ger > 0 ? direto / ger * 100 : 0, pSolar: casa > 0 ? direto / casa * 100 : 0 };
   });
 }
 function graficoEnergia(rows) {
   const d = rows.slice(-12); if (!d.length) return '<div class="empty">Sem dados ainda.</div>';
-  const pd = (x, k) => Math.max(0, x[k]) / (x.dias || 1), sr = [["ger", "#f5b335", "Gerado"], ["direto", "#2e9e5b", "Solar usado na hora"], ["inj", "#4a9be0", "Injetado"], ["cons", "#d9483b", "Consumido da rede"]];
+  const pd = (x, k) => Math.max(0, x[k] || 0) / (x.dias || 1), sr = [["ger", "#f5b335", "Gerado"], ["direto", "#2e9e5b", "Solar usado na hora"], ["inj", "#4a9be0", "Injetado"], ["cons", "#d9483b", "Consumido da rede"]];
   const max = Math.max(...d.flatMap(x => sr.map(([k]) => pd(x, k))), 1), W = 360, H = 180, base = H - 24, slot = (W - 16) / d.length, bw = Math.min(14, slot / 4 - 2), h = v => v / max * (base - 14);
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:640px;display:block;margin:0 auto"><line x1="6" y1="${base}" x2="${W - 6}" y2="${base}" stroke="currentColor" opacity=".2"/>
   ${d.map((x, i) => { const x0 = 8 + slot * i + (slot - (bw + 2) * 4) / 2; return sr.map(([k, cor, n], j) => `<rect x="${x0 + j * (bw + 2)}" y="${base - h(pd(x, k))}" width="${bw}" height="${h(pd(x, k))}" rx="3" fill="${cor}"><title>${n}: ${kwh(pd(x, k))}/dia</title></rect>`).join("") + `<text x="${8 + slot * i + slot / 2}" y="${H - 8}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${dataBR(x.data).slice(0, 5)}</text>`; }).join("")}</svg>
@@ -501,49 +518,54 @@ function graficoEnergia(rows) {
 }
 V.energia = () => {
   const rows = energiaCalc(), x = [...rows].reverse().find(r => ymOf(r.data) === S.mes), mes = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`, ini = Number(by("config", "energia")?.creditoInicial) || 0;
-  const ant = [...rows].reverse().find(r => ymOf(r.data) < S.mes), estoqueAtual = x ? x.estoque : ant ? ant.estoque : ini;
+  const ant = [...rows].reverse().find(r => ymOf(r.data) < S.mes), estoqueAtual = x ? x.estoque : ant ? ant.estoque : ini, K = v => v == null ? "—" : kwh(v);
   const box = (cor, sym, v, lbl, c = "", extra = "") => `<div class="card stat"><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${v}</div><small>${lbl}</small>${extra}</div></div>`;
-  const aj = (sg, v, nome) => sg ? `<div><span>${nome}: você informou <b>${kwh(sg.v)}</b> de ${dataBR(sg.ini).slice(0, 5)} a ${dataBR(sg.fim).slice(0, 5)} (${sg.dias} dias${sg.estimado ? ", início estimado" : ""}) = ${kwh(sg.taxa)}/dia</span><b>→ ${kwh(v)}</b></div>` : `<div><span>${nome}: sem dado nesta leitura; estimado pela média das outras leituras</span><b>→ ${kwh(v)}</b></div>`;
-  const pd = (r, v) => kwh(v / (r.dias || 1));
-  return `<div class="tools"><h2 style="flex:1">Energia</h2><button class="btn" data-act="editEnergia">Nova leitura</button>${x ? `<button class="btn ghost" data-act="editEnergia" data-id="${x.e.id}">Editar leitura de ${dataBR(x.data).slice(0, 5)}</button>` : ""}<button class="btn ghost" data-act="energiaIni">Créditos iniciais</button></div>
-  ${x ? `<div class="sum" style="justify-content:flex-start;margin:0 2px 12px"><span>Período da Equatorial: <b>${dataBR(x.de)} a ${dataBR(x.data)}</b> (${x.dias} dias${x.estimado ? " — início estimado em 30 dias; edite a leitura e informe o início do período" : ""})</span><span>média da casa: <b>${kwh(x.dias > 0 ? x.casa / x.dias : 0)}/dia</b></span></div>
+  const falta = n => n === 0 ? "nenhuma leitura lançada ainda" : "só há 1 leitura acumulada; o cálculo começa quando você lançar a próxima";
+  const aj = (r, nome, n) => !r ? `<div><span>${nome}: ${falta(n)}</span><b>—</b></div>` : (r.usados.length ? r.usados.map(sg => `<div><span>${nome}: ${sg.acum ? `de ${kwh(sg.de).replace(" kWh", "")} para ${kwh(sg.ate)}` : `${kwh(sg.v)}`} entre ${dataBR(sg.ini).slice(0, 5)} e ${dataBR(sg.fim).slice(0, 5)} (${sg.dias} dias${sg.estimado ? ", início estimado" : ""}) = ${kwh(sg.v)} · ${kwh(sg.taxa)}/dia</span><b></b></div>`).join("") : `<div><span>${nome}: nenhuma leitura cai dentro deste período; usei a média diária da leitura mais próxima</span><b></b></div>`) + `<div><span>${nome} nos ${x.dias} dias da Equatorial${r.fora ? ` (${r.fora} ${r.fora === 1 ? "dia estimado" : "dias estimados"})` : ""}</span><b>${kwh(r.v)}</b></div>`;
+  const pd = (r, v) => v == null ? "—" : kwh(v / (r.dias || 1));
+  const lanc = [...S.data.energia].sort((a, b) => dataLeit(b).localeCompare(dataLeit(a)));
+  return `<div class="tools"><h2 style="flex:1">Energia</h2><button class="btn" data-act="editEnergia">Nova leitura</button><button class="btn ghost" data-act="energiaIni">Créditos iniciais</button></div>
+  ${x ? `<div class="sum" style="justify-content:flex-start;margin:0 2px 12px"><span>Período da Equatorial: <b>${dataBR(x.de)} a ${dataBR(x.data)}</b> (${x.dias} dias${x.estimado ? " — início estimado em 30 dias; edite e informe a data da leitura anterior" : ""})</span>${x.casa != null ? `<span>média da casa: <b>${kwh(x.dias > 0 ? x.casa / x.dias : 0)}/dia</b></span>` : ""}</div>
   <div class="stats s5" style="margin-bottom:14px">
-    ${box("#f5b335", "☀", kwh(x.ger), "Gerado (Solplanet)", "", x.gerAj ? '<span class="chip">ajustado ao período da Equatorial</span>' : "")}
-    ${box("#2e9e5b", "⚡", kwh(x.direto), "Solar usado na hora", x.direto < 0 ? "neg" : "pos", `<span class="chip">${x.pAuto.toFixed(0)}% do que foi gerado</span>`)}
+    ${box("#f5b335", "☀", K(x.ger), "Gerado (Solplanet)", "", x.ger == null ? '<span class="chip">aguardando a próxima leitura</span>' : x.gerAj ? '<span class="chip">ajustado ao período da Equatorial</span>' : "")}
+    ${box("#2e9e5b", "⚡", K(x.direto), "Solar usado na hora", x.direto == null ? "" : x.direto < 0 ? "neg" : "pos", x.direto == null ? "" : `<span class="chip">${x.pAuto.toFixed(0)}% do que foi gerado</span>`)}
     ${box("#4a9be0", "↗", kwh(x.inj), "Injetado na Equatorial")}
     ${box("#d9483b", "↘", kwh(x.cons), "Consumido da Equatorial")}
-    ${box("#7e57c2", "🏠", kwh(x.casa), "Consumo da casa (calculado)", "", `<span class="chip">${x.pSolar.toFixed(0)}% veio do solar</span>`)}
+    ${box("#7e57c2", "🏠", K(x.casa), "Consumo da casa (calculado)", "", x.casa == null ? "" : `<span class="chip">${x.pSolar.toFixed(0)}% veio do solar</span>`)}
     ${box(x.saldoMes >= 0 ? "#2e9e5b" : "#f29a38", "±", (x.saldoMes >= 0 ? "+" : "−") + kwh(Math.abs(x.saldoMes)), x.saldoMes >= 0 ? "Créditos adicionados no período" : "Faltou no período (injetado − consumido)", x.saldoMes >= 0 ? "pos" : "neg", x.saldoMes < 0 ? `<span class="chip">usou ${kwh(x.usados)} do estoque${x.pagar > 0 ? " · " + kwh(x.pagar) + " sem crédito" : ""}</span>` : "")}
     ${box("#3b7ddd", "🔋", kwh(x.estoque), "Estoque de créditos na Equatorial", "", x.informado ? '<span class="chip">valor informado da fatura</span>' : "")}
   </div>
-  ${x.direto < 0 ? '<div class="aviso ruim" style="cursor:default">O injetado ficou maior que o gerado neste período, o que não é possível. Confira as datas e os valores da Solplanet.</div>' : ""}
+  ${x.direto != null && x.direto < 0 ? '<div class="aviso ruim" style="cursor:default">O injetado ficou maior que o gerado neste período, o que não é possível. Confira as datas e os valores da Solplanet.</div>' : ""}
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start;margin-bottom:14px">
-    <div class="card"><h3>Conferência com o medidor privado</h3>${x.med ? `<div class="leg"><div style="border:0"><span>Medidor privado no período da Equatorial</span><b>${kwh(x.med)}</b></div><div><span>Calculado: rede (${kwh(x.cons)}) + solar usado na hora (${kwh(x.direto)})</span><b>${kwh(x.casa)}</b></div>
+    <div class="card"><h3>Conferência com o medidor privado</h3>${x.med != null && x.casa != null ? `<div class="leg"><div style="border:0"><span>Medidor privado no período da Equatorial</span><b>${kwh(x.med)}</b></div><div><span>Calculado: rede (${kwh(x.cons)}) + solar usado na hora (${kwh(x.direto)})</span><b>${kwh(x.casa)}</b></div>
       <div><span>Diferença (medidor − calculado)</span><b class="${Math.abs(x.dif) > Math.max(5, x.casa * 0.03) ? "neg" : "pos"}">${x.dif >= 0 ? "+" : "−"}${kwh(Math.abs(x.dif))}${x.casa ? ` (${(x.dif / x.casa * 100).toFixed(1).replace(".", ",")}%)` : ""}</b></div>
       <div><span>Solar usado na hora segundo o medidor (medidor − rede)</span><b>${kwh(r2(x.med - x.cons))}</b></div></div>
-      <div class="sum" style="justify-content:flex-start">${Math.abs(x.dif) > Math.max(5, x.casa * 0.03) ? "A diferença passou de 3%. Com leituras em dias diferentes isso é esperado no começo; tende a diminuir conforme você lança mais leituras." : "As medições batem (diferença de até 3%)."}</div>` : '<div class="empty">Informe a leitura do medidor privado para comparar.</div>'}</div>
-    <div class="card"><h3>Padronização das datas</h3><div class="leg"><div style="border:0"><span>Equatorial: ${dataBR(x.de).slice(0, 5)} a ${dataBR(x.data).slice(0, 5)} (${x.dias} dias) — é o período de referência</span><b></b></div>${x.gerAj || x.gerInf ? aj(x.gerInf, x.ger, "Solplanet") : ""}${x.medAj || x.medInf ? aj(x.medInf, x.med, "Medidor") : ""}</div>
-      <div class="sum" style="justify-content:flex-start">Quando as datas não coincidem, o app usa a média por dia de cada aparelho e recalcula para os mesmos dias da Equatorial. Assim todos os períodos ficam comparáveis.</div></div>
-  </div>` : `<div class="card empty" style="margin-bottom:14px">Nenhuma leitura lançada em ${mes.toLowerCase()}. Estoque de créditos até aqui: <b>${kwh(estoqueAtual)}</b>.</div>`}
-  <div class="card" style="margin-bottom:14px"><h3>Comparação entre leituras (média por dia)</h3>${rows.length ? graficoEnergia(rows) + `<div style="overflow:auto;margin-top:10px"><table><thead><tr><th>Leitura</th><th>Dias</th><th>Gerado/dia</th><th>Usado na hora/dia</th><th>Injetado/dia</th><th>Consumido rede/dia</th><th>Casa/dia</th><th>Medidor/dia</th></tr></thead><tbody>
-    ${[...rows].reverse().map(r => `<tr class="click" data-act="editEnergia" data-id="${r.e.id}"><td>${dataBR(r.data)}</td><td>${r.dias}</td><td>${pd(r, r.ger)}</td><td>${pd(r, r.direto)}</td><td>${pd(r, r.inj)}</td><td>${pd(r, r.cons)}</td><td class="b">${pd(r, r.casa)}</td><td>${r.med ? pd(r, r.med) : "—"}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Sem dados ainda.</div>'}</div>
-  <div class="card"><h3>Histórico (totais do período da Equatorial)</h3>${rows.length ? `<div style="overflow:auto"><table><thead><tr><th>Data da leitura</th><th>Dias</th><th>Gerado</th><th>Usado na hora</th><th>Injetado</th><th>Consumido rede</th><th>Casa (calc.)</th><th>Medidor</th><th>Diferença</th><th>Créditos do período</th><th>Estoque</th></tr></thead><tbody>
-    ${[...rows].reverse().map(r => `<tr class="click" data-act="editEnergia" data-id="${r.e.id}"><td>${dataBR(r.data)}</td><td>${r.dias}</td><td>${kwh(r.ger)}${r.gerAj ? " ~" : ""}</td><td>${kwh(r.direto)}</td><td>${kwh(r.inj)}</td><td>${kwh(r.cons)}</td><td>${kwh(r.casa)}</td><td>${r.med ? kwh(r.med) + (r.medAj ? " ~" : "") : "—"}</td><td>${r.dif == null ? "—" : (r.dif >= 0 ? "+" : "−") + kwh(Math.abs(r.dif))}</td><td class="${cls(r.saldoMes)}">${(r.saldoMes >= 0 ? "+" : "−") + kwh(Math.abs(r.saldoMes))}</td><td class="b">${kwh(r.estoque)}${r.informado ? " *" : ""}</td></tr>`).join("")}</tbody></table></div>
-    <div class="sum">~ valor ajustado ao período da Equatorial · * estoque informado por você a partir da fatura · créditos iniciais: ${kwh(ini)}.</div>` : '<div class="empty">Toque em "Nova leitura" para registrar a primeira.</div>'}</div>`;
+      <div class="sum" style="justify-content:flex-start">${Math.abs(x.dif) > Math.max(5, x.casa * 0.03) ? "A diferença passou de 3%. Enquanto houver dias estimados isso é esperado; tende a diminuir com mais leituras." : "As medições batem (diferença de até 3%)."}</div>` : x.med != null ? `<div class="leg"><div style="border:0"><span>Medidor privado no período da Equatorial</span><b>${kwh(x.med)}</b></div><div><span>Solar usado na hora segundo o medidor (medidor − rede)</span><b>${kwh(r2(x.med - x.cons))}</b></div></div><div class="sum" style="justify-content:flex-start">Falta a geração da Solplanet para fechar a conferência.</div>` : `<div class="empty">Medidor privado: ${falta(x.medLeit)}.</div>`}</div>
+    <div class="card"><h3>Padronização das datas</h3><div class="leg"><div style="border:0"><span>Equatorial: ${dataBR(x.de).slice(0, 5)} a ${dataBR(x.data).slice(0, 5)} (${x.dias} dias) — é o período de referência</span><b></b></div>${aj(x.g, "Solplanet", x.solLeit)}${aj(x.mm, "Medidor", x.medLeit)}</div>
+      <div class="sum" style="justify-content:flex-start">O inversor e o medidor mostram números acumulados. O app pega a diferença entre duas leituras, transforma em média por dia e recalcula para os mesmos dias da fatura da Equatorial, mesmo que você tenha olhado cada um em um dia diferente.</div></div>
+  </div>` : `<div class="card empty" style="margin-bottom:14px">Nenhuma fatura da Equatorial lançada em ${mes.toLowerCase()}. Estoque de créditos até aqui: <b>${kwh(estoqueAtual)}</b>.</div>`}
+  <div class="card" style="margin-bottom:14px"><h3>Comparação entre períodos (média por dia)</h3>${rows.length ? graficoEnergia(rows) + `<div style="overflow:auto;margin-top:10px"><table><thead><tr><th>Leitura</th><th>Dias</th><th>Gerado/dia</th><th>Usado na hora/dia</th><th>Injetado/dia</th><th>Consumido rede/dia</th><th>Casa/dia</th><th>Medidor/dia</th></tr></thead><tbody>
+    ${[...rows].reverse().map(r => `<tr class="click" data-act="editEnergia" data-id="${r.e.id}"><td>${dataBR(r.data)}</td><td>${r.dias}</td><td>${pd(r, r.ger)}</td><td>${pd(r, r.direto)}</td><td>${pd(r, r.inj)}</td><td>${pd(r, r.cons)}</td><td class="b">${pd(r, r.casa)}</td><td>${pd(r, r.med)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Lance uma fatura da Equatorial para começar.</div>'}</div>
+  <div class="card" style="margin-bottom:14px"><h3>Histórico (totais do período da Equatorial)</h3>${rows.length ? `<div style="overflow:auto"><table><thead><tr><th>Data da leitura</th><th>Dias</th><th>Gerado</th><th>Usado na hora</th><th>Injetado</th><th>Consumido rede</th><th>Casa (calc.)</th><th>Medidor</th><th>Diferença</th><th>Créditos do período</th><th>Estoque</th></tr></thead><tbody>
+    ${[...rows].reverse().map(r => `<tr class="click" data-act="editEnergia" data-id="${r.e.id}"><td>${dataBR(r.data)}</td><td>${r.dias}</td><td>${K(r.ger)}${r.gerAj ? " ~" : ""}</td><td>${K(r.direto)}</td><td>${kwh(r.inj)}</td><td>${kwh(r.cons)}</td><td>${K(r.casa)}</td><td>${K(r.med)}${r.medAj ? " ~" : ""}</td><td>${r.dif == null ? "—" : (r.dif >= 0 ? "+" : "−") + kwh(Math.abs(r.dif))}</td><td class="${cls(r.saldoMes)}">${(r.saldoMes >= 0 ? "+" : "−") + kwh(Math.abs(r.saldoMes))}</td><td class="b">${kwh(r.estoque)}${r.informado ? " *" : ""}</td></tr>`).join("")}</tbody></table></div>
+    <div class="sum">~ valor ajustado ao período da Equatorial · * estoque informado por você a partir da fatura · créditos iniciais: ${kwh(ini)}.</div>` : '<div class="empty">Nenhuma fatura lançada.</div>'}</div>
+  <div class="card"><h3>Leituras lançadas</h3>${lanc.map(e => `<div class="row" data-act="editEnergia" data-id="${e.id}"><div class="tx"><div>${dataBR(dataLeit(e))}</div><small>${[temEq(e) ? `Equatorial: consumiu ${kwh(e.consumido || 0)}, injetou ${kwh(e.injetado || 0)}` : "", e.gerAcum ? `Solplanet acumulado: ${kwh(e.gerAcum)}${e.solData && e.solData !== dataLeit(e) ? " em " + dataBR(e.solData).slice(0, 5) : ""}` : e.gerado ? `Solplanet no período: ${kwh(e.gerado)}` : "", e.medAcum ? `Medidor acumulado: ${kwh(e.medAcum)}${e.medData && e.medData !== dataLeit(e) ? " em " + dataBR(e.medData).slice(0, 5) : ""}` : e.medidor ? `Medidor no período: ${kwh(e.medidor)}` : ""].filter(Boolean).join(" · ") || "sem valores"}</small></div><span class="link">editar</span></div>`).join("") || '<div class="empty">Toque em "Nova leitura" para registrar a primeira.</div>'}</div>`;
 };
 function formEnergia(id) {
   const o = by("energia", id), n = v => v ? moneyIn(v) : "", hj = ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`;
   openForm({ title: o ? "Editar leitura de energia" : "Nova leitura de energia",
-    values: o ? { data: dataLeit(o), eqIni: o.eqIni || "", consumido: n(o.consumido), injetado: n(o.injetado), solData: o.solData || "", solIni: o.solIni || "", gerado: n(o.gerado), medData: o.medData || "", medIni: o.medIni || "", medidor: n(o.medidor), creditoFatura: o.creditoFatura === "" || o.creditoFatura == null ? "" : moneyIn(o.creditoFatura) || "0", valor: n(o.valor) } : { data: hj },
-    fields: [{ type: "titulo", label: "Equatorial (fatura)" }, { k: "data", label: "Data da leitura atual", type: "date" }, { k: "eqIni", label: "Data da leitura anterior (opcional — se vazio, usa a última leitura lançada)", type: "date" },
-      { k: "consumido", label: "Energia consumida da rede (kWh)", type: "money" }, { k: "injetado", label: "Energia injetada na rede (kWh)", type: "money" },
-      { type: "titulo", label: "Solplanet (inversor)" }, { k: "gerado", label: "Energia gerada (kWh)", type: "money" }, { k: "solData", label: "Até que dia vai esse valor (se vazio, mesma data da Equatorial)", type: "date" }, { k: "solIni", label: "Desde que dia (opcional — se vazio, desde o último lançamento)", type: "date" },
-      { type: "titulo", label: "Medidor privado" }, { k: "medidor", label: "Energia que passou para a casa (kWh)", type: "money" }, { k: "medData", label: "Até que dia vai esse valor (se vazio, mesma data da Equatorial)", type: "date" }, { k: "medIni", label: "Desde que dia (opcional — se vazio, desde o último lançamento)", type: "date" },
+    values: o ? { data: dataLeit(o), eqIni: o.eqIni || "", consumido: n(o.consumido), injetado: n(o.injetado), gerAcum: n(o.gerAcum), solData: o.solData || "", gerado: n(o.gerado), solIni: o.solIni || "", medAcum: n(o.medAcum), medData: o.medData || "", medidor: n(o.medidor), medIni: o.medIni || "", creditoFatura: o.creditoFatura === "" || o.creditoFatura == null ? "" : moneyIn(o.creditoFatura) || "0", valor: n(o.valor) } : { data: hj },
+    fields: [{ k: "data", label: "Data deste lançamento (na fatura: a data da leitura atual)", type: "date" },
+      { type: "titulo", label: "Equatorial — preencha só quando chegar a fatura" }, { k: "consumido", label: "Energia consumida da rede no período (kWh)", type: "money" }, { k: "injetado", label: "Energia injetada na rede no período (kWh)", type: "money" }, { k: "eqIni", label: "Data da leitura anterior da fatura (opcional — se vazio, usa a fatura anterior)", type: "date" },
+      { type: "titulo", label: "Solplanet (inversor)" }, { k: "gerAcum", label: "Geração total acumulada que aparece no app (kWh)", type: "money" }, { k: "solData", label: "Dia em que você olhou (se vazio, a data do lançamento)", type: "date" },
+      { type: "titulo", label: "Medidor privado" }, { k: "medAcum", label: "Número acumulado que aparece no medidor (kWh)", type: "money" }, { k: "medData", label: "Dia em que você olhou (se vazio, a data do lançamento)", type: "date" },
+      { type: "titulo", label: "Alternativa: se você só tem o valor do período" }, { k: "gerado", label: "Solplanet — gerado só no período (kWh)", type: "money" }, { k: "solIni", label: "Solplanet — desde que dia (opcional)", type: "date" }, { k: "medidor", label: "Medidor — consumo só no período (kWh)", type: "money" }, { k: "medIni", label: "Medidor — desde que dia (opcional)", type: "date" },
       { type: "titulo", label: "Opcional" }, { k: "creditoFatura", label: "Saldo de créditos que veio na fatura (kWh)", type: "money" }, { k: "valor", label: "Valor da conta (R$)", type: "money" }],
-    onSave: async v => { if (!/^\d{4}-\d{2}-\d{2}$/.test(v.data || "")) { toast("Informe a data da leitura da Equatorial."); return false; }
-      const outro = S.data.energia.find(e => dataLeit(e) === v.data && e.id !== o?.id); if (outro) { toast("Já existe uma leitura nessa data. Toque nela no histórico para editar."); return false; }
+    onSave: async v => { if (!/^\d{4}-\d{2}-\d{2}$/.test(v.data || "")) { toast("Informe a data do lançamento."); return false; }
+      const outro = S.data.energia.find(e => dataLeit(e) === v.data && e.id !== o?.id); if (outro) { toast("Já existe um lançamento nessa data. Toque nele em Leituras lançadas para editar."); return false; }
       for (const [a, b, nome] of [[v.eqIni, v.data, "Equatorial"], [v.solIni, v.solData || v.data, "Solplanet"], [v.medIni, v.medData || v.data, "medidor"]]) if (a && a >= b) { toast(`Na parte ${nome}, a data inicial precisa ser antes da final.`); return false; }
-      const d = { data: v.data, mes: ymOf(v.data), eqIni: v.eqIni || "", consumido: parseMoney(v.consumido), injetado: parseMoney(v.injetado), gerado: parseMoney(v.gerado), solData: v.solData || "", solIni: v.solIni || "", medidor: parseMoney(v.medidor), medData: v.medData || "", medIni: v.medIni || "", creditoFatura: String(v.creditoFatura ?? "").trim() === "" ? "" : parseMoney(v.creditoFatura), valor: parseMoney(v.valor) };
+      const d = { data: v.data, mes: ymOf(v.data), eqIni: v.eqIni || "", consumido: parseMoney(v.consumido), injetado: parseMoney(v.injetado), gerAcum: parseMoney(v.gerAcum), gerado: parseMoney(v.gerado), solData: v.solData || "", solIni: v.solIni || "", medAcum: parseMoney(v.medAcum), medidor: parseMoney(v.medidor), medData: v.medData || "", medIni: v.medIni || "", creditoFatura: String(v.creditoFatura ?? "").trim() === "" ? "" : parseMoney(v.creditoFatura), valor: parseMoney(v.valor) };
+      if (!temEq(d) && !d.gerAcum && !d.gerado && !d.medAcum && !d.medidor) { toast("Preencha pelo menos um valor."); return false; }
       o ? await store.set("energia", o.id, d) : await store.add("energia", d); },
     onDelete: o ? () => store.del("energia", o.id) : null });
 }
