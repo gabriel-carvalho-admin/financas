@@ -219,10 +219,10 @@ function porCategoria(arr) {
 const claro = cor => { const m = /^#?([0-9a-f]{6})$/i.exec(cor || ""); if (!m) return false; const n = parseInt(m[1], 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 170; };
 const av = (txt, cor) => `<span class="av" style="background:${esc(cor || "#90a4ae")}${claro(cor) ? ";color:#1f2937" : ""}">${esc(txt)}</span>`;
 const ini = n => (n || "?").trim().slice(0, 2).toUpperCase();
-function barras(rows) {
+function barras(rows, clic) {
   if (!rows.length) return '<div class="empty">Sem dados neste mês.</div>';
   const max = rows[0].v || 1;
-  return `<div class="bars">${rows.slice(0, 8).map(r => `<div class="bar"><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div></div>`).join("")}</div>`;
+  return `<div class="bars">${rows.slice(0, 8).map(r => `<div class="bar ${clic ? "clk" : ""}" ${clic ? `data-act="det" data-k="cat" data-id="${esc(r.id)}"` : ""}><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div></div>`).join("")}</div>`;
 }
 function donut(segs, centro) {
   const t = segs.reduce((s, x) => s + x.v, 0);
@@ -230,7 +230,7 @@ function donut(segs, centro) {
   let acc = 0;
   const arcs = segs.filter(s => s.v > 0).map(s => { const p = s.v / t * 100, o = 25 - acc; acc += p; return `<circle cx="21" cy="21" r="15.915" fill="none" stroke="${esc(s.cor)}" stroke-width="6.5" stroke-dasharray="${p} ${100 - p}" stroke-dashoffset="${o}"/>`; }).join("");
   return `<svg class="donut" viewBox="0 0 42 42">${arcs}<text x="21" y="22" text-anchor="middle" font-size="3.4" font-weight="700" fill="currentColor">${esc(centro)}</text></svg>
-  <div class="leg">${segs.map(s => `<div><i style="background:${esc(s.cor)}"></i><span>${esc(s.nome)}</span><b>${brl(s.v)}</b></div>`).join("")}</div>`;
+  <div class="leg">${segs.map(s => `<div ${s.attr ? s.attr + ' class="clk"' : ""}><i style="background:${esc(s.cor)}"></i><span>${esc(s.nome)}</span><b>${brl(s.v)}</b></div>`).join("")}</div>`;
 }
 function diario(arr, cor) {
   const n = ultimoDia(S.mes), dias = Array(n).fill(0);
@@ -245,53 +245,96 @@ const variacao = (a, b) => b > 0 ? `<span class="chip">${a >= b ? "↗" : "↘"}
 
 /* ---------- telas ---------- */
 const V = {};
+// Janela de detalhes usada pelos cartões clicáveis do resumo
+function modalLista(titulo, ls, pre = "") {
+  ls = [...ls].sort((a, b) => b.data.localeCompare(a.data)); const rk = porCategoria(ls.filter(l => l.tipo !== "transferencia"));
+  $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:540px"><h2>${titulo}</h2>${pre}
+    <div class="sum" style="justify-content:flex-start;margin:0 0 10px"><span>${ls.length} ${ls.length === 1 ? "lançamento" : "lançamentos"}</span><span>total <b>${brl(total(ls))}</b></span></div>
+    ${rk.length > 1 ? `<div style="margin-bottom:8px">${barras(rk)}</div>` : ""}${ls.map(l => `<div class="day" style="padding:8px 4px 0">${dataBR(l.data)}</div>${linha(l)}`).join("") || '<div class="empty">Nenhum lançamento.</div>'}
+    <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`;
+}
+const linhaInfo = (rot, val, c = "") => `<div><span>${rot}</span><b class="${c}">${val}</b></div>`;
+function detalhe(d) {
+  const P = periodo(), desp = noPer("despesa", P), rec = noPer("receita", P), k = d.k;
+  if (k === "des") return modalLista(`Despesas ${P.nome} — ${P.label}`, desp);
+  if (k === "rec") return modalLista(`Receitas ${P.nome} — ${P.label}`, rec);
+  if (k === "bal") return modalLista(`Balanço ${P.nome} — ${P.label}`, [...rec, ...desp], `<div class="leg" style="margin-bottom:10px">${linhaInfo("Receitas", brl(total(rec)), "pos")}${linhaInfo("Despesas", brl(total(desp)), "neg")}${linhaInfo("Balanço (receitas − despesas)", brl(total(rec) - total(desp)), cls(total(rec) - total(desp)))}</div>`);
+  if (k === "cat") { const ls = desp.filter(l => (l.emprestimo ? "__emp" : l.categoriaId || "") === d.id), c = cat(d.id), sm = new Map(); ls.forEach(l => sm.set(l.subgrupo || "Sem subgrupo", (sm.get(l.subgrupo || "Sem subgrupo") || 0) + l.valor));
+    const subs = [...sm].sort((a, b) => b[1] - a[1]), t = total(ls) || 1, tudo = total(desp) || 1;
+    return modalLista(`${c.icone} ${esc(c.nome)} — ${P.label}`, ls, `<div class="leg" style="margin-bottom:10px">${linhaInfo("Parte do total gasto", (t / tudo * 100).toFixed(1).replace(".", ",") + "%")}${subs.length > 1 || subs[0]?.[0] !== "Sem subgrupo" ? subs.map(([n, v]) => linhaInfo("› " + esc(n), brl(v))).join("") : ""}</div>`); }
+  if (k === "rcr") return modalLista(`Despesas ${{ fixa: "fixas", parcelada: "parceladas", variavel: "variáveis" }[d.v]} — ${P.label}`, desp.filter(l => (l.recorrencia || "variavel") === d.v));
+  if (k === "conta") { const c = by("contas", d.id), r = resumoConta(c, S.mes, P.ini, P.fim), ls = S.data.lancamentos.filter(l => !l.cartaoId && (l.contaId === c.id || l.contaDestinoId === c.id) && l.data >= P.ini && l.data <= P.fim);
+    return modalLista(`${esc(c.nome)} — ${P.label}`, ls, `<div class="leg" style="margin-bottom:10px">${linhaInfo("Saldo antes do período", brl(r.inicial))}${linhaInfo("Receitas", brl(r.rec), "pos")}${linhaInfo("Despesas (inclui faturas pagas)", brl(r.des), "neg")}${linhaInfo("Transferências recebidas / enviadas", `${brl(r.tc)} / ${brl(r.td)}`)}${linhaInfo("Saldo no fim do período", brl(r.saldo), cls(r.saldo))}${linhaInfo("Previsto (com pendentes)", brl(r.previsto), cls(r.previsto))}</div><div class="acts" style="justify-content:flex-start;margin:0 0 10px"><button class="btn ghost" data-act="editConta" data-id="${c.id}">Editar conta</button></div>`); }
+  if (k === "saldo") { const rs = contasOrd().map(c => ({ c, ...resumoConta(c, S.mes, P.ini, P.fim) })), pend = S.data.lancamentos.filter(l => !l.efetivada && !l.cartaoId && l.data <= P.fim);
+    const fats = S.data.cartoes.flatMap(c => [...new Set(S.data.lancamentos.filter(l => l.cartaoId === c.id).map(fatMes))].filter(ym => !c.pagas?.[ym] && dataNoMes(ym, c.vencimento || 10) <= P.fim).map(ym => ({ c, ym, v: fatTotal(c.id, ym) }))).filter(x => x.v > 0);
+    return modalLista(`Detalhamento do saldo — ${P.label}`, pend, `<div class="leg" style="margin-bottom:10px">${rs.map(x => linhaInfo(`${esc(x.c.nome)} <small class="mut">(previsto ${brl(x.previsto)})</small>`, brl(x.saldo), cls(x.saldo))).join("")}
+      ${linhaInfo("Saldo no fim do período", brl(r2(rs.reduce((a, x) => a + x.saldo, 0))), "b")}${fats.map(x => linhaInfo(`💳 Fatura ${esc(x.c.nome)} de ${MESES[Number(x.ym.slice(5)) - 1].toLowerCase()} (a pagar)`, "-" + brl(x.v), "neg")).join("")}${linhaInfo("Saldo previsto", brl(r2(rs.reduce((a, x) => a + x.previsto, 0))), "b")}</div><div class="day" style="padding-left:4px">Lançamentos pendentes que entram no previsto</div>`); }
+}
 function evolucao7() {
   const fim = hoje(), dias = Array.from({ length: 7 }, (_, i) => addDias(fim, i - 6)), vs = dias.map(d => total(S.data.lancamentos.filter(l => l.tipo === "despesa" && l.data === d)));
   const max = Math.max(...vs, 1), W = 320, H = 130, x = i => 16 + i * (W - 32) / 6, y = v => H - 26 - v / max * (H - 44), pts = vs.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><polygon points="16,${H - 26} ${pts} ${W - 16},${H - 26}" fill="#d9483b" opacity=".12"/><polyline points="${pts}" fill="none" stroke="#d9483b" stroke-width="1.8"/>
-  ${vs.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="2.6" fill="#d9483b"><title>${dataBR(dias[i])}: ${brl(v)}</title></circle><text x="${x(i)}" y="${H - 8}" font-size="8.5" text-anchor="middle" fill="currentColor" opacity=".6">${dataBR(dias[i]).slice(0, 5)}</text>`).join("")}</svg>
-  <div class="sum" style="margin-top:2px">Total nos 7 dias: <b class="neg">${brl(total(vs.map(v => ({ valor: v }))))}</b></div>`;
+  ${vs.map((v, i) => `<g data-act="dia" data-d="${dias[i]}" style="cursor:pointer"><rect x="${x(i) - 20}" y="0" width="40" height="${H}" fill="transparent"/><circle cx="${x(i)}" cy="${y(v)}" r="3" fill="#d9483b"><title>${dataBR(dias[i])}: ${brl(v)}</title></circle><text x="${x(i)}" y="${H - 8}" font-size="8.5" text-anchor="middle" fill="currentColor" opacity=".6">${dataBR(dias[i]).slice(0, 5)}</text></g>`).join("")}</svg>
+  <div class="sum" style="margin-top:2px">Total nos 7 dias: <b class="neg">${brl(total(vs.map(v => ({ valor: v }))))}</b> · toque em um dia para ver</div>`;
+}
+function seisMeses() {
+  const ms = Array.from({ length: 6 }, (_, i) => addMes(S.mes, i - 5)), d = ms.map(ym => ({ ym, r: total(doMes("receita", ym)), g: total(doMes("despesa", ym)) })), max = Math.max(...d.map(x => Math.max(x.r, x.g)), 1), W = 320, H = 150, base = H - 24, slot = (W - 12) / 6, bw = 15, h = v => v / max * (base - 12);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" y1="${base}" x2="${W - 6}" y2="${base}" stroke="currentColor" opacity=".2"/>${d.map((x, i) => { const cx = 6 + slot * i + slot / 2;
+    return `<g data-act="irMes" data-v="${x.ym}" style="cursor:pointer"><rect x="${cx - slot / 2}" y="0" width="${slot}" height="${H}" fill="${x.ym === S.mes ? "currentColor" : "transparent"}" opacity=".05"/><rect x="${cx - bw - 1}" y="${base - h(x.r)}" width="${bw}" height="${h(x.r)}" rx="3" fill="#2e9e5b"><title>Receitas: ${brl(x.r)}</title></rect><rect x="${cx + 1}" y="${base - h(x.g)}" width="${bw}" height="${h(x.g)}" rx="3" fill="#d9483b"><title>Despesas: ${brl(x.g)}</title></rect><text x="${cx}" y="${H - 8}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${MESES[Number(x.ym.slice(5)) - 1].slice(0, 3).toLowerCase()}</text></g>`; }).join("")}</svg>
+  <div class="sum" style="margin-top:2px"><span><i class="lg" style="background:#2e9e5b"></i>Receitas</span><span><i class="lg" style="background:#d9483b"></i>Despesas</span><span>· toque em um mês para abrir</span></div>`;
 }
 V.inicio = () => {
   const P = periodo(), PA = periodo(-1), m = S.mes;
   const rs = contasOrd().map(c => ({ c, ...resumoConta(c, m, P.ini, P.fim) }));
   const T = k => r2(rs.reduce((s, x) => s + x[k], 0));
-  const desp = noPer("despesa", P), rec = noPer("receita", P);
+  const desp = noPer("despesa", P), rec = noPer("receita", P), ef = a => total(a.filter(l => l.efetivada)), bal = r2(total(rec) - total(desp));
   const fat = faturasNoPer(P), fatAnt = faturasNoPer(PA), variacao = (a, b) => b > 0 ? `<span class="chip">${a >= b ? "↗" : "↘"} ${Math.abs((a - b) / b * 100).toFixed(0)}% vs. ${P.ant}</span>` : "";
   const rk = porCategoria(desp);
   const rc = k => total(desp.filter(l => (l.recorrencia || "variavel") === k));
-  const stat = (cor, sym, v, lbl, extra = "", c = "") => `<div class="card stat"><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small>${extra}</div></div>`;
-  return `${avisoFixas()}<div class="pertop"><div class="seg per">${[["dia", "Diário"], ["semana", "Semanal"], ["mes", "Mensal"], ["ano", "Anual"]].map(([k, n]) => `<button class="${S.per === k ? "on" : ""}" data-act="per" data-v="${k}">${n}</button>`).join("")}</div><span class="mut">Resumo ${P.nome}: <b>${P.label}</b></span></div>
+  const stat = (act, cor, sym, v, lbl, extra = "", c = "") => `<div class="card stat clk" ${act}><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small>${extra}</div></div>`;
+  const prev = v => `<small class="mut">Previsto ${brl(v)}</small>`;
+  const pend = S.data.lancamentos.filter(l => !l.efetivada && !l.cartaoId && l.data <= P.fim).sort((a, b) => a.data.localeCompare(b.data));
+  const devem = S.data.pessoas.map(p => ({ p, ...contaPessoa(p.id) })).filter(x => x.deve > 0.005).sort((a, b) => b.deve - a.deve);
+  const objs = [...S.data.objetivos].sort((a, b) => (a.prazo || "9999").localeCompare(b.prazo || "9999"));
+  return `${avisoFixas()}<div class="pertop"><div class="seg per">${[["dia", "Diário"], ["semana", "Semanal"], ["mes", "Mensal"], ["ano", "Anual"]].map(([k, n]) => `<button class="${S.per === k ? "on" : ""}" data-act="per" data-v="${k}">${n}</button>`).join("")}</div><span class="mut">Resumo ${P.nome}: <b>${P.label}</b> · toque nos quadros para ver os detalhes</span></div>
   <div class="grid dash">
-  <div class="card"><div class="tl">
+  <div class="card clk" data-act="det" data-k="saldo"><div class="tl">
     <div><span class="v">${brl(T("inicial"))}</span><small>Inicial (antes do período)</small></div>
     <div class="now"><span class="v ${cls(T("saldo"))}">${brl(T("saldo"))}</span><small>Saldo no fim do período</small></div>
-    <div><span class="v">${brl(T("previsto"))}</span><small>Previsto</small></div></div></div>
-  <div class="card"><h3>Ranking de categorias</h3>${barras(rk)}${rk.length ? `<div class="sum">Total gasto ${P.nome}: ${brl(total(desp))}</div>` : ""}</div>
+    <div><span class="v">${brl(T("previsto"))}</span><small>Previsto</small></div></div><div class="vermais">ver detalhamento ›</div></div>
+  <div class="card"><h3>Ranking de categorias <button class="link" data-act="det" data-k="des">ver tudo</button></h3>${barras(rk, true)}${rk.length ? `<div class="sum">Total gasto ${P.nome}: ${brl(total(desp))} · toque em uma categoria</div>` : ""}</div>
   <div class="c-side">
     ${cardFixas()}
+    <div class="card"><h3>A pagar e a receber <small class="mut" style="font-weight:400">${pend.length} pendente${pend.length === 1 ? "" : "s"}</small></h3>${pend.slice(0, 6).map(l => `<div class="row" data-act="editL" data-id="${l.id}">${av(cat(l.emprestimo ? "__emp" : l.categoriaId).icone, cat(l.emprestimo ? "__emp" : l.categoriaId).cor)}<div class="tx"><div>${esc(l.descricao)}</div><small class="${l.data < hoje() ? "neg" : ""}">${l.data < hoje() ? "venceu em" : "para"} ${dataBR(l.data)}</small></div><span class="val ${l.tipo === "receita" ? "pos" : "neg"}">${brl(l.valor)}</span><button class="ck" data-act="toggleL" data-id="${l.id}" title="Marcar como pago/recebido">✓</button></div>`).join("") || '<div class="empty">Nada pendente até o fim do período.</div>'}
+      ${pend.length > 6 ? `<div class="sum"><button class="link" data-act="det" data-k="saldo">ver os ${pend.length} pendentes</button></div>` : ""}</div>
+    ${S.data.cartoes.length ? `<div class="card"><h3>Cartões de crédito <button class="link" data-act="nav" data-v="cartoes">ver</button></h3>${S.data.cartoes.map(c => { const st = stFatura(c), ab = emAberto(c); return `<div class="row" data-act="irCartao" data-id="${c.id}">${av(ini(c.nome), c.cor)}<div class="tx"><div>${esc(c.nome)}</div><small>vence ${dataBR(st.venc).slice(0, 5)} · disponível ${brl((c.limite || 0) - ab)}</small><div style="margin-top:4px">${st.tags}</div></div><span class="val ${st.paga ? "" : "neg"}">${brl(st.paga ? st.paga.valor : st.ft)}</span></div>`; }).join("")}</div>` : ""}
     <div class="card"><h3>Orçamentos de despesas <button class="link" data-act="nav" data-v="orcamentos">ver</button></h3>${orcLista(true)}</div>
-    <div class="card"><h3>Despesas por recorrência</h3>${donut([{ nome: "Fixas", cor: "#4a9be0", v: rc("fixa") }, { nome: "Parceladas", cor: "#f5b335", v: rc("parcelada") }, { nome: "Variáveis", cor: "#e0564a", v: rc("variavel") }], brl(total(desp)))}</div>
+    <div class="card"><h3>Despesas por recorrência</h3>${donut([{ nome: "Fixas", cor: "#4a9be0", v: rc("fixa"), attr: 'data-act="det" data-k="rcr" data-v="fixa"' }, { nome: "Parceladas", cor: "#f5b335", v: rc("parcelada"), attr: 'data-act="det" data-k="rcr" data-v="parcelada"' }, { nome: "Variáveis", cor: "#e0564a", v: rc("variavel"), attr: 'data-act="det" data-k="rcr" data-v="variavel"' }], brl(total(desp)))}</div>
   </div>
   <div class="c-main">
-    <div class="stats">
-      ${stat("#3b7ddd", "🏦", T("saldo"), "Saldo nas contas", "", cls(T("saldo")))}
-      ${stat("#2e9e5b", "＋", total(rec), "Total recebido", variacao(total(rec), total(noPer("receita", PA))), "pos")}
-      ${stat("#d9483b", "－", total(desp), "Total gasto", variacao(total(desp), total(noPer("despesa", PA))), "neg")}
-      ${stat("#5b6ee0", "💳", fat, S.per === "mes" ? "Total faturas" : "Faturas que vencem no período", variacao(fat, fatAnt))}
+    <div class="stats s5">
+      ${stat('data-act="nav" data-v="contas"', "#3b7ddd", "🏦", T("saldo"), "Saldo nas contas", prev(T("previsto")), cls(T("saldo")))}
+      ${stat('data-act="det" data-k="rec"', "#2e9e5b", "＋", ef(rec), "Receitas recebidas", prev(total(rec)) + variacao(total(rec), total(noPer("receita", PA))), "pos")}
+      ${stat('data-act="det" data-k="des"', "#d9483b", "－", ef(desp), "Despesas pagas", prev(total(desp)) + variacao(total(desp), total(noPer("despesa", PA))), "neg")}
+      ${stat('data-act="det" data-k="bal"', "#f5b335", "⇅", r2(ef(rec) - ef(desp)), "Balanço", prev(bal), cls(ef(rec) - ef(desp)))}
+      ${stat('data-act="nav" data-v="cartoes"', "#5b6ee0", "💳", fat, S.per === "mes" ? "Total faturas" : "Faturas que vencem no período", variacao(fat, fatAnt))}
     </div>
-    <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true)}</div>
+    <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true, 'det" data-k="conta')}</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start">
       <div class="card"><h3>Evolução das despesas <small class="mut" style="font-weight:400">últimos 7 dias</small></h3>${evolucao7()}</div>
       <div class="card"><h3>Últimas despesas <button class="link" data-act="nav" data-v="lancamentos">ver</button></h3>${S.data.lancamentos.filter(l => l.tipo === "despesa" && l.data <= hoje()).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 5).map(linha).join("") || '<div class="empty">Nenhuma despesa ainda.</div>'}</div>
+      <div class="card"><h3>Receitas x despesas <small class="mut" style="font-weight:400">últimos 6 meses</small></h3>${seisMeses()}</div>
+      <div class="card"><h3>Receitas por categoria <button class="link" data-act="det" data-k="rec">ver</button></h3>${donut(porCategoria(rec).map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(total(rec)))}</div>
+      ${S.data.pessoas.length ? `<div class="card"><h3>A receber de pessoas e empresas <button class="link" data-act="nav" data-v="pessoas">ver</button></h3>${devem.slice(0, 5).map(x => `<div class="row" data-act="verPessoa" data-id="${x.p.id}">${av(ini(x.p.nome), x.p.cor)}<div class="tx"><div>${esc(x.p.nome)}</div><small>já pagou ${brl(x.pago)} de ${brl(x.gasto)}</small></div><span class="val neg">${brl(x.deve)}</span></div>`).join("") || '<div class="empty">Ninguém devendo. 👍</div>'}${devem.length ? `<div class="sum">Total a receber: <b class="neg">${brl(r2(devem.reduce((a, x) => a + x.deve, 0)))}</b></div>` : ""}</div>` : ""}
+      ${objs.length ? `<div class="card"><h3>Objetivos <button class="link" data-act="nav" data-v="objetivos">ver</button></h3>${objs.slice(0, 4).map(o => { const p = o.alvo ? (o.guardado || 0) / o.alvo * 100 : 0; return `<div class="row" data-act="nav" data-v="objetivos">${av("🎯", o.cor)}<div class="tx"><div style="display:flex;justify-content:space-between"><span>${esc(o.nome)}</span><b>${p.toFixed(0)}%</b></div><div class="prog" style="margin-top:5px"><i style="width:${Math.min(100, p)}%;background:${esc(o.cor)}"></i></div><small>${brl(o.guardado || 0)} de ${brl(o.alvo || 0)}</small></div></div>`; }).join("")}</div>` : ""}
     </div>
   </div></div>`;
 };
-function tabContas(rs, curto) {
+function tabContas(rs, curto, act = "editConta") {
   if (!rs.length) return '<div class="empty">Nenhuma conta cadastrada.</div>';
   const T = k => r2(rs.reduce((s, x) => s + x[k], 0)), td = (v, c = "") => `<td class="${c}">${brl(v)}</td>`;
   return `<div style="overflow:auto"><table><thead><tr><th>Descrição</th>${curto ? "" : '<th class="hs">Saldo inicial</th>'}<th>Receitas</th><th>Despesas</th>${curto ? "" : '<th class="hs">Transf. créd.</th><th class="hs">Transf. déb.</th>'}<th>Saldo</th><th class="hs">Previsto</th></tr></thead>
-  <tbody>${rs.map(x => `<tr class="click" data-act="editConta" data-id="${x.c.id}"><td><div class="who">${curto ? "" : '<span class="grip" data-act="nada" title="Arrastar para reordenar" aria-label="Arrastar para reordenar">⠿</span>'}${av(ini(x.c.nome), x.c.cor)}${esc(x.c.nome)}</div></td>${curto ? "" : td(x.inicial, "hs " + cls(x.inicial))}${td(x.rec)}${td(x.des)}${curto ? "" : td(x.tc, "hs") + td(x.td, "hs")}${td(x.saldo, "b " + cls(x.saldo))}${td(x.previsto, "hs " + cls(x.previsto))}</tr>`).join("")}</tbody>
+  <tbody>${rs.map(x => `<tr class="click" data-act="${act}" data-id="${x.c.id}"><td><div class="who">${curto ? "" : '<span class="grip" data-act="nada" title="Arrastar para reordenar" aria-label="Arrastar para reordenar">⠿</span>'}${av(ini(x.c.nome), x.c.cor)}${esc(x.c.nome)}</div></td>${curto ? "" : td(x.inicial, "hs " + cls(x.inicial))}${td(x.rec)}${td(x.des)}${curto ? "" : td(x.tc, "hs") + td(x.td, "hs")}${td(x.saldo, "b " + cls(x.saldo))}${td(x.previsto, "hs " + cls(x.previsto))}</tr>`).join("")}</tbody>
   <tfoot><tr><td>Total</td>${curto ? "" : td(T("inicial"), "hs")}${td(T("rec"))}${td(T("des"))}${curto ? "" : td(T("tc"), "hs") + td(T("td"), "hs")}${td(T("saldo"))}${td(T("previsto"), "hs")}</tr></tfoot></table></div>`;
 }
 V.contas = () => `<div class="tools"><h2 style="flex:1">Contas</h2><button class="btn" data-act="editConta">Nova conta</button></div>
@@ -861,6 +904,8 @@ const A = {
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
   novo: d => S.view === "objetivos" ? formObj() : S.view === "energia" ? formEnergia() : S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa),
+  det: d => detalhe(d), irCartao: d => { S.menu = false; S.view = "cartoes"; S.cartao = d.id; $("#main").scrollTop = 0; render(); },
+  irMes: d => { S.mes = d.v; S.per = "mes"; S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; render(); },
   editObj: d => formObj(d.id),
   objMov: d => { const o = by("objetivos", d.id), s = Number(d.s); openForm({ title: `${s > 0 ? "Guardar em" : "Retirar de"} ${esc(o.nome)}`, values: { v: "" }, fields: [{ k: "v", label: "Valor (R$)", type: "money" }],
     onSave: async v => { const x = parseMoney(v.v); if (x <= 0) { toast("Informe o valor."); return false; } await store.set("objetivos", o.id, { ...o, guardado: r2(Math.max(0, (o.guardado || 0) + s * x)) }); } }); },

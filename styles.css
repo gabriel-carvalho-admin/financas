@@ -142,7 +142,7 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .ndot{position:absolute;top:6px;right:8px;width:9px;height:9px;border-radius:50%;background:var(--bad);border:2px solid var(--card)}
 #cfixas .row .r{display:grid;justify-items:end;gap:3px}
 
-.stats.s5{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.stats.s5{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .lg{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
 .gr{padding:10px 0;border-top:1px solid var(--line)} .gr:first-of-type{border-top:0}
 .gl{display:flex;align-items:center;gap:8px;margin-bottom:6px} .gl b:first-of-type{flex:1} .gl span{color:var(--mut);font-size:12px}
@@ -182,6 +182,12 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .cd{min-height:68px;border-radius:12px;background:var(--soft);padding:6px 4px;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:10.5px;overflow:hidden}
 .cd.vz{background:none} .cd b{font-size:13px} .cd.hj b{background:var(--pri);color:#fff;border-radius:50%;width:24px;height:24px;display:grid;place-items:center}
 .cd span{white-space:nowrap} .cd i{font-style:normal;font-size:10px;margin-top:auto} button.cd:hover{outline:2px solid var(--pri)}
+
+.clk{cursor:pointer;transition:transform .12s,box-shadow .12s}
+.card.clk:hover{transform:translateY(-2px);box-shadow:0 2px 6px rgba(30,50,90,.12),0 10px 24px rgba(30,50,90,.10)}
+.bar.clk:hover .n,.leg .clk:hover span{color:var(--pri);text-decoration:underline}
+.vermais{color:var(--pri);font-size:12px;font-weight:600;margin-top:12px;text-align:right}
+.stat small.mut{font-size:11px}
 
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(15,23,42,.45);display:grid;place-items:center;z-index:20;padding:12px}
