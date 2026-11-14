@@ -695,6 +695,12 @@ V.projecao = () => {
   <div class="sum">Considera o que já está lançado: despesas fixas e parceladas dos próximos meses, faturas de cartão em aberto e lançamentos pendentes. Contas mensais ainda sem valor (água, luz) não entram.</div></div>`;
 };
 /* ---------- Calendário ---------- */
+// Lista separada por grupo (categoria), com subtotal de cada grupo
+function porGrupoHtml(titulo, ls, cor, linhas = true) {
+  if (!ls.length) return "";
+  return `<div class="sec"><span>${titulo}</span><b class="${cor}">${brl(total(ls))}</b></div>${porCategoria(ls).map(g => { const it = ls.filter(l => (l.emprestimo ? "__emp" : l.categoriaId || "") === g.id).sort((a, b) => a.data.localeCompare(b.data));
+    return `<div class="grp"><div class="gl" style="margin:8px 0 2px"><i class="lg" style="background:${esc(g.c.cor)}"></i><b>${esc(g.c.icone + " " + g.c.nome)}</b><span>${it.length} ${it.length === 1 ? "lançamento" : "lançamentos"} · ${g.p.toFixed(0)}%</span><b class="${cor}">${brl(g.v)}</b></div>${linhas ? it.map(linha).join("") : `<div class="prog" style="margin-bottom:6px"><i style="width:${g.p}%;background:${esc(g.c.cor)}"></i></div>`}</div>`; }).join("")}`;
+}
 V.calendario = () => {
   const ym = S.mes, n = ultimoDia(ym), ini = new Date(`${ym}-01T12:00`).getDay(), cel = [];
   for (let i = 0; i < ini; i++) cel.push('<div class="cd vz"></div>');
@@ -702,7 +708,11 @@ V.calendario = () => {
     const venc = S.data.cartoes.some(c => dataNoMes(ym, c.vencimento || 10) === d && fatTotal(c.id, ym) > 0 && !c.pagas?.[ym]), fx = fixasMes(ym).some(x => x.k !== 3 && x.venc === d);
     cel.push(`<button class="cd ${d === hoje() ? "hj" : ""}" data-act="dia" data-d="${d}"><b>${dia}</b>${rec ? `<span class="pos">+${S.priv ? "••" : rec.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}${des ? `<span class="neg">-${S.priv ? "••" : des.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}<i>${venc ? "💳" : ""}${fx ? "🔔" : ""}</i></button>`); }
   return `<h2 style="margin-bottom:12px">Calendário</h2><div class="card"><div class="cal">${["dom", "seg", "ter", "qua", "qui", "sex", "sáb"].map(x => `<div class="cdh">${x}</div>`).join("")}${cel.join("")}</div>
-  <div class="sum"><span class="pos">+ receitas do dia</span><span class="neg">− despesas do dia</span><span>💳 vencimento de fatura</span><span>🔔 conta mensal a pagar</span></div><div class="sum">Toque em um dia para ver os lançamentos ou adicionar um novo naquela data.</div></div>`;
+  <div class="sum"><span class="pos">+ receitas do dia</span><span class="neg">− despesas do dia</span><span>💳 vencimento de fatura</span><span>🔔 conta mensal a pagar</span></div><div class="sum">Toque em um dia para ver as entradas e as despesas separadas por grupo, ou adicionar um lançamento naquela data.</div></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(290px,1fr));align-items:start;margin-top:14px">
+    <div class="card"><h3>Entradas do mês por grupo</h3>${porGrupoHtml("Total de entradas", doMes("receita", ym), "pos", false) || '<div class="empty">Nenhuma entrada neste mês.</div>'}</div>
+    <div class="card"><h3>Despesas do mês por grupo</h3>${porGrupoHtml("Total de despesas", doMes("despesa", ym), "neg", false) || '<div class="empty">Nenhuma despesa neste mês.</div>'}</div>
+  </div>`;
 };
 /* ---------- Objetivos ---------- */
 V.objetivos = () => {
@@ -909,8 +919,10 @@ const A = {
   editObj: d => formObj(d.id),
   objMov: d => { const o = by("objetivos", d.id), s = Number(d.s); openForm({ title: `${s > 0 ? "Guardar em" : "Retirar de"} ${esc(o.nome)}`, values: { v: "" }, fields: [{ k: "v", label: "Valor (R$)", type: "money" }],
     onSave: async v => { const x = parseMoney(v.v); if (x <= 0) { toast("Informe o valor."); return false; } await store.set("objetivos", o.id, { ...o, guardado: r2(Math.max(0, (o.guardado || 0) + s * x)) }); } }); },
-  dia: d => { const ls = S.data.lancamentos.filter(l => l.data === d.d);
-    $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>${dataBR(d.d)}</h2>${ls.map(linha).join("") || '<div class="empty">Nenhum lançamento neste dia.</div>'}
+  dia: d => { const ls = S.data.lancamentos.filter(l => l.data === d.d), rec = ls.filter(l => l.tipo === "receita"), des = ls.filter(l => l.tipo === "despesa"), tr = ls.filter(l => l.tipo === "transferencia");
+    $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:520px"><h2>${dataBR(d.d)} <small class="mut" style="font-weight:400;font-size:13px">${DIAS[new Date(d.d + "T12:00").getDay()]}</small></h2>
+    ${ls.length ? `<div class="tri" style="font-size:14px;margin-bottom:6px"><div><small>Entradas</small><b class="pos">${brl(total(rec))}</b></div><div><small>Despesas</small><b class="neg">${brl(total(des))}</b></div><div><small>Resultado do dia</small><b class="${cls(total(rec) - total(des))}">${brl(total(rec) - total(des))}</b></div></div>` : ""}
+    ${porGrupoHtml("Entradas", rec, "pos")}${porGrupoHtml("Despesas", des, "neg")}${tr.length ? `<div class="sec">Transferências</div>${tr.map(linha).join("")}` : ""}${ls.length ? "" : '<div class="empty">Nenhum lançamento neste dia.</div>'}
     <div class="acts"><button class="btn" data-act="novoDia" data-d="${d.d}">+ Lançamento neste dia</button><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   novoDia: d => formLanc(null, undefined, undefined, d.d),
   editEnergia: d => formEnergia(d.id),

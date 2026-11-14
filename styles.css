@@ -189,6 +189,9 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .vermais{color:var(--pri);font-size:12px;font-weight:600;margin-top:12px;text-align:right}
 .stat small.mut{font-size:11px}
 
+.sec{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px;margin:14px 0 4px;padding:8px 10px;border-radius:10px;background:var(--soft)}
+.grp .row{padding-left:14px}
+
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(15,23,42,.45);display:grid;place-items:center;z-index:20;padding:12px}
 .modal{background:var(--card);border-radius:20px;width:100%;max-width:440px;max-height:92vh;overflow:auto;padding:18px}
