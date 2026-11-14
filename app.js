@@ -8,14 +8,14 @@ const firebaseConfig = {
   appId: "1:986463923028:web:741ca828cfba9bba4bf6c1"
 };
 const FB = "https://www.gstatic.com/firebasejs/10.14.1/";
-const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas", "fixas", "projetos", "movProjeto", "energia", "config"];
+const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas", "fixas", "projetos", "movProjeto", "energia", "config", "objetivos"];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
 /* ---------- utilidades ---------- */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const r2 = n => Math.round(n * 100) / 100;
-const brl = v => { v = Math.abs(v) < 0.005 ? 0 : v; return (v < 0 ? "-" : "") + "R$ " + Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+const brl = v => { if (S.priv) return "R$ ••••"; v = Math.abs(v) < 0.005 ? 0 : v; return (v < 0 ? "-" : "") + "R$ " + Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
 const parseMoney = s => { s = String(s ?? "").trim().replace(/[R$\s]/g, ""); if (s.includes(",")) s = s.replace(/\./g, "").replace(",", "."); const n = parseFloat(s); return isFinite(n) ? r2(n) : 0; };
 const moneyIn = n => n ? n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }) : "";
 const pad = n => String(n).padStart(2, "0");
@@ -41,11 +41,17 @@ const I = {
   config: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
   energia: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
   dilcar: '<path d="M12 3l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6L3.4 9.4l6-.8z"/>',
+  objetivos: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.3"/>',
+  projecao: '<path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/>',
+  calendario: '<rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
   mais: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
 };
 const ico = n => `<svg class="ico" viewBox="0 0 24 24">${I[n]}</svg>`;
 const LOGO = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#3b7ddd" stroke-width="6"/><path d="M16 5a11 11 0 0 1 9.5 16.5" fill="none" stroke="#2e9e5b" stroke-width="6" stroke-linecap="round"/></svg>';
-const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["orcamentos", "Orçamentos"], ["relatorios", "Relatórios"], ["categorias", "Categorias"], ["energia", "Energia"], ["dilcar", "Dilcar Eventos"], ["config", "Ajustes"]];
+const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["orcamentos", "Orçamentos"], ["objetivos", "Objetivos"], ["relatorios", "Relatórios"], ["projecao", "Projeção de saldo"], ["calendario", "Calendário"], ["categorias", "Categorias"], ["energia", "Energia"], ["dilcar", "Dilcar Eventos"], ["config", "Ajustes"]];
+const MENU = [["", ["inicio", "contas", "lancamentos", "cartoes", "pessoas"]], ["Planejar", ["orcamentos", "objetivos"]], ["Analisar", ["relatorios", "projecao", "calendario", "categorias"]], ["Outros", ["energia", "dilcar"]], ["", ["config"]]];
 const EMOJIS = ["🍽️","🛒","🏠","🚗","⛽","💊","🎓","🎮","👨‍👩‍👧","👕","✈️","📱","💡","🐶","🎁","💼","💰","🛍️","📅","🏋️","☕","🧾","📦","➕"];
 const GRUPOS_EV = ["Buffet", "Bebidas", "Decoração", "Equipe", "Som e luz", "Locação", "Transporte", "Outros"];
 const PALETA = ["#4a9be0", "#f5b335", "#e0564a", "#7e57c2", "#2f8f83", "#f29a38", "#3f51b5", "#26a69a", "#e57373", "#78909c"];
@@ -60,7 +66,7 @@ const CATS_PADRAO = [
 ];
 
 /* ---------- estado ---------- */
-const S = { per: "mes", ref: hoje(), cartao: null, proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
+const S = { priv: false, menu: false, per: "mes", ref: hoje(), cartao: null, proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
   data: Object.fromEntries(COLS.map(c => [c, []])) };
 let store = null, fb = null, pend = false;
 const render = () => { if (pend) return; pend = true; const go = () => { pend = false; draw(); }; document.hidden ? setTimeout(go, 0) : requestAnimationFrame(go); };
@@ -68,6 +74,7 @@ const by = (col, id) => S.data[col].find(x => x.id === id);
 const contasOrd = () => [...S.data.contas].sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || a.nome.localeCompare(b.nome));
 const cat = id => id === "__emp" ? { nome: "Empréstimos", icone: "🤝", cor: "#5b6ee0" } : by("categorias", id) || { nome: "Sem categoria", icone: "📦", cor: "#90a4ae" };
 const toast = m => { const t = document.createElement("div"); t.className = "toast"; t.textContent = m; document.body.append(t); setTimeout(() => t.remove(), 2600); };
+try { S.priv = localStorage.getItem("mf-priv") === "1"; } catch (e) {}
 try { const p = localStorage.getItem("mf-per"); if (["dia", "semana", "mes", "ano"].includes(p)) S.per = p; } catch (e) {}
 try { if (localStorage.getItem("mf-dark") === "1") document.documentElement.classList.add("dark"); } catch (e) {}
 
@@ -144,6 +151,7 @@ function semearDemo() {
     { id: "e2", data: dataNoMes(addMes(m, -1), 12), consumido: 355, injetado: 380, gerAcum: 71515, medAcum: 35380 },
     { id: "e3", data: dataNoMes(m, 9), consumido: 402, injetado: 301 }, { id: "e4", data: dataNoMes(m, 13), gerAcum: 72260, medAcum: 36230 }].map(e => ({ mes: ymOf(e.data), creditoFatura: "", valor: 0, ...e }));
   D.config = [{ id: "energia", creditoInicial: 150 }];
+  D.objetivos = [{ id: "o1", nome: "Reserva de emergência", alvo: 10000, guardado: 3500, prazo: dataNoMes(addMes(m, 10), 30), cor: "#2f8f83" }, { id: "o2", nome: "Viagem", alvo: 4000, guardado: 4000, prazo: "", cor: "#f29a38" }];
   D.orcamentos = [{ id: id(), categoriaId: c("Mercado"), valor: 900 }, { id: id(), categoriaId: c("Alimentação"), valor: 300 }, { id: id(), categoriaId: c("Lazer"), valor: 200 }];
 }
 
@@ -237,6 +245,13 @@ const variacao = (a, b) => b > 0 ? `<span class="chip">${a >= b ? "↗" : "↘"}
 
 /* ---------- telas ---------- */
 const V = {};
+function evolucao7() {
+  const fim = hoje(), dias = Array.from({ length: 7 }, (_, i) => addDias(fim, i - 6)), vs = dias.map(d => total(S.data.lancamentos.filter(l => l.tipo === "despesa" && l.data === d)));
+  const max = Math.max(...vs, 1), W = 320, H = 130, x = i => 16 + i * (W - 32) / 6, y = v => H - 26 - v / max * (H - 44), pts = vs.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><polygon points="16,${H - 26} ${pts} ${W - 16},${H - 26}" fill="#d9483b" opacity=".12"/><polyline points="${pts}" fill="none" stroke="#d9483b" stroke-width="1.8"/>
+  ${vs.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="2.6" fill="#d9483b"><title>${dataBR(dias[i])}: ${brl(v)}</title></circle><text x="${x(i)}" y="${H - 8}" font-size="8.5" text-anchor="middle" fill="currentColor" opacity=".6">${dataBR(dias[i]).slice(0, 5)}</text>`).join("")}</svg>
+  <div class="sum" style="margin-top:2px">Total nos 7 dias: <b class="neg">${brl(total(vs.map(v => ({ valor: v }))))}</b></div>`;
+}
 V.inicio = () => {
   const P = periodo(), PA = periodo(-1), m = S.mes;
   const rs = contasOrd().map(c => ({ c, ...resumoConta(c, m, P.ini, P.fim) }));
@@ -266,6 +281,10 @@ V.inicio = () => {
       ${stat("#5b6ee0", "💳", fat, S.per === "mes" ? "Total faturas" : "Faturas que vencem no período", variacao(fat, fatAnt))}
     </div>
     <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true)}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start">
+      <div class="card"><h3>Evolução das despesas <small class="mut" style="font-weight:400">últimos 7 dias</small></h3>${evolucao7()}</div>
+      <div class="card"><h3>Últimas despesas <button class="link" data-act="nav" data-v="lancamentos">ver</button></h3>${S.data.lancamentos.filter(l => l.tipo === "despesa" && l.data <= hoje()).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 5).map(linha).join("") || '<div class="empty">Nenhuma despesa ainda.</div>'}</div>
+    </div>
   </div></div>`;
 };
 function tabContas(rs, curto) {
@@ -619,27 +638,68 @@ function paginaProjeto(p) {
   </div>`;
 }
 V.dilcar = () => { const p = S.proj && by("projetos", S.proj); return p ? paginaProjeto(p) : listaProjetos(); };
+/* ---------- Projeção de saldo ---------- */
+V.projecao = () => {
+  const meses = Array.from({ length: 12 }, (_, i) => addMes(S.mes, i)), d = meses.map(ym => { const rs = S.data.contas.map(c => resumoConta(c, ym)); return { ym, rec: total(doMes("receita", ym)), des: total(doMes("despesa", ym)), saldo: r2(rs.reduce((a, r) => a + r.previsto, 0)) }; });
+  const mx = Math.max(...d.map(x => Math.max(x.rec, x.des, x.saldo)), 1), mn = Math.min(...d.map(x => x.saldo), 0), W = 720, H = 240, base = H - 28, y = v => base - (v - mn) / (mx - mn || 1) * (base - 16), slot = (W - 20) / 12, bw = Math.min(16, slot / 2 - 4), lab = ym => `${MESES[Number(ym.slice(5)) - 1].slice(0, 3).toLowerCase()}/${ym.slice(2, 4)}`;
+  const pts = d.map((x, i) => `${(10 + slot * i + slot / 2).toFixed(1)},${y(x.saldo).toFixed(1)}`).join(" ");
+  return `<h2 style="margin-bottom:12px">Projeção de saldo <small class="mut" style="font-weight:400;font-size:13px">próximos 12 meses a partir de ${lab(S.mes)}</small></h2>
+  <div class="card" style="margin-bottom:14px"><svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" y1="${y(0)}" x2="${W - 6}" y2="${y(0)}" stroke="currentColor" opacity=".25"/>
+    ${d.map((x, i) => { const cx = 10 + slot * i + slot / 2; return `<rect x="${cx - bw - 1}" y="${y(x.rec)}" width="${bw}" height="${Math.max(0, y(0) - y(x.rec))}" rx="3" fill="#2e9e5b" opacity=".55"><title>Receitas: ${brl(x.rec)}</title></rect><rect x="${cx + 1}" y="${y(x.des)}" width="${bw}" height="${Math.max(0, y(0) - y(x.des))}" rx="3" fill="#d9483b" opacity=".55"><title>Despesas: ${brl(x.des)}</title></rect><text x="${cx}" y="${H - 8}" font-size="10" text-anchor="middle" fill="currentColor" opacity=".6">${lab(x.ym)}</text>`; }).join("")}
+    <polyline points="${pts}" fill="none" stroke="#3b7ddd" stroke-width="2.5"/>${d.map((x, i) => `<circle cx="${10 + slot * i + slot / 2}" cy="${y(x.saldo)}" r="3.5" fill="#3b7ddd"><title>${lab(x.ym)}: ${brl(x.saldo)}</title></circle>`).join("")}</svg>
+    <div class="sum"><span><i class="lg" style="background:#2e9e5b"></i>Receitas</span><span><i class="lg" style="background:#d9483b"></i>Despesas</span><span><i class="lg" style="background:#3b7ddd"></i>Saldo previsto no fim do mês</span></div></div>
+  <div class="card"><div style="overflow:auto"><table><thead><tr><th>Mês</th><th>Receitas</th><th>Despesas</th><th>Resultado do mês</th><th>Saldo previsto</th></tr></thead><tbody>${d.map(x => `<tr><td>${MESES[Number(x.ym.slice(5)) - 1]} ${x.ym.slice(0, 4)}</td><td class="pos">${brl(x.rec)}</td><td class="neg">${brl(x.des)}</td><td class="${cls(x.rec - x.des)}">${brl(x.rec - x.des)}</td><td class="b ${cls(x.saldo)}">${brl(x.saldo)}</td></tr>`).join("")}</tbody></table></div>
+  <div class="sum">Considera o que já está lançado: despesas fixas e parceladas dos próximos meses, faturas de cartão em aberto e lançamentos pendentes. Contas mensais ainda sem valor (água, luz) não entram.</div></div>`;
+};
+/* ---------- Calendário ---------- */
+V.calendario = () => {
+  const ym = S.mes, n = ultimoDia(ym), ini = new Date(`${ym}-01T12:00`).getDay(), cel = [];
+  for (let i = 0; i < ini; i++) cel.push('<div class="cd vz"></div>');
+  for (let dia = 1; dia <= n; dia++) { const d = `${ym}-${pad(dia)}`, ls = S.data.lancamentos.filter(l => l.data === d), des = total(ls.filter(l => l.tipo === "despesa")), rec = total(ls.filter(l => l.tipo === "receita"));
+    const venc = S.data.cartoes.some(c => dataNoMes(ym, c.vencimento || 10) === d && fatTotal(c.id, ym) > 0 && !c.pagas?.[ym]), fx = fixasMes(ym).some(x => x.k !== 3 && x.venc === d);
+    cel.push(`<button class="cd ${d === hoje() ? "hj" : ""}" data-act="dia" data-d="${d}"><b>${dia}</b>${rec ? `<span class="pos">+${S.priv ? "••" : rec.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}${des ? `<span class="neg">-${S.priv ? "••" : des.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}<i>${venc ? "💳" : ""}${fx ? "🔔" : ""}</i></button>`); }
+  return `<h2 style="margin-bottom:12px">Calendário</h2><div class="card"><div class="cal">${["dom", "seg", "ter", "qua", "qui", "sex", "sáb"].map(x => `<div class="cdh">${x}</div>`).join("")}${cel.join("")}</div>
+  <div class="sum"><span class="pos">+ receitas do dia</span><span class="neg">− despesas do dia</span><span>💳 vencimento de fatura</span><span>🔔 conta mensal a pagar</span></div><div class="sum">Toque em um dia para ver os lançamentos ou adicionar um novo naquela data.</div></div>`;
+};
+/* ---------- Objetivos ---------- */
+V.objetivos = () => {
+  const os = [...S.data.objetivos].sort((a, b) => (a.prazo || "9999").localeCompare(b.prazo || "9999"));
+  return `<div class="tools"><h2 style="flex:1">Objetivos</h2><button class="btn" data-act="editObj">Novo objetivo</button></div>
+  ${os.length ? `<div class="grid cc">${os.map(o => { const g = o.guardado || 0, p = o.alvo ? g / o.alvo * 100 : 0, falta = r2(Math.max(0, (o.alvo || 0) - g)), meses = o.prazo && o.prazo > hoje() ? Math.max(1, Math.ceil(diasEntre(hoje(), o.prazo) / 30.4)) : 0;
+    return `<div class="card"><div class="hd">${av("🎯", o.cor)}<div class="tx"><b>${esc(o.nome)}</b><small>${o.prazo ? "até " + dataBR(o.prazo) : "sem prazo"}</small></div><button data-act="editObj" data-id="${o.id}" title="Editar">${ico("mais")}</button></div>
+      <div class="fat"><span>Guardado</span><b class="pos">${brl(g)}</b></div><div class="prog" style="margin-top:10px"><i style="width:${Math.min(100, p)}%;background:${esc(o.cor)}"></i></div>
+      <div class="tri" style="margin-top:12px"><div><small>Meta</small>${brl(o.alvo || 0)}</div><div><small>Falta</small>${brl(falta)}</div><div><small>Concluído</small>${p.toFixed(0)}%</div></div>
+      ${falta > 0 && meses ? `<div class="emp mut">Guardando ${brl(falta / meses)} por mês você chega lá no prazo (${meses} ${meses === 1 ? "mês" : "meses"}).</div>` : falta <= 0 ? '<div class="emp pos">Objetivo alcançado 🎉</div>' : ""}
+      <div class="dash-l"></div><div class="ft" style="margin-top:0"><span class="tag" style="background:${falta <= 0 ? "#2e9e5b" : "#3b7ddd"}">${falta <= 0 ? "Concluído" : "Em andamento"}</span><span><button class="link" data-act="objMov" data-id="${o.id}" data-s="-1">Retirar</button> &nbsp; <button class="link" data-act="objMov" data-id="${o.id}" data-s="1">Guardar</button></span></div></div>`; }).join("")}</div>
+    <div class="sum">Total guardado: <b class="pos">${brl(total(os.map(o => ({ valor: o.guardado || 0 }))))}</b> de ${brl(total(os.map(o => ({ valor: o.alvo || 0 }))))}</div>` : '<div class="card empty">Nenhum objetivo ainda. Crie um para acompanhar quanto falta (viagem, reserva de emergência, carro…).</div>'}`;
+};
 V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px">
   <div class="row" data-act="dark"><div class="tx">Tema escuro</div><span class="ck ${document.documentElement.classList.contains("dark") ? "on" : ""}">✓</span></div>
   <div class="row" data-act="csv"><div class="tx"><div>Exportar lançamentos (CSV)</div><small>Abre no Excel ou Google Planilhas</small></div></div>
-  <div class="row" data-act="sair"><div class="tx"><div class="neg">Sair</div><small>${esc(S.demo ? "Modo demonstração — nada é salvo" : S.user?.email || "")}</small></div></div></div>
-  <div class="sum" style="justify-content:flex-start;max-width:520px">${NAV.slice(2, -1).map(([k, n]) => `<button class="pill" data-act="nav" data-v="${k}">${n}</button>`).join("")}</div>`;
+  <div class="row" data-act="sair"><div class="tx"><div class="neg">Sair</div><small>${esc(S.demo ? "Modo demonstração — nada é salvo" : S.user?.email || "")}</small></div></div></div>`;
 
 /* ---------- desenho ---------- */
 function draw() {
   const root = $("#root");
   if (!S.user && !S.demo) return;
   if (!$("#app")) {
-    root.innerHTML = `<div id="app"><header class="top"><div class="logo">${LOGO}<span>meu<b>financeiro</b></span></div><span class="sp"></span>
+    root.innerHTML = `<div id="app"><header class="top"><button class="hb" data-act="menu" aria-label="Abrir menu">${ico("menu")}</button><div class="logo">${LOGO}<span>meu<b>financeiro</b></span></div><span class="sp"></span>
+      <button class="hb" id="bpriv" data-act="priv" aria-label="Modo privado: esconder valores" title="Modo privado">${ico("olho")}</button>
       <div class="mes"><button data-act="mes" data-v="-1" aria-label="Mês anterior">‹</button><span class="lbl" id="mlbl"></span><button data-act="mes" data-v="1" aria-label="Próximo mês">›</button></div>
       <button class="fab" data-act="novo" aria-label="Novo lançamento">+</button></header>
-      <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="modal"></div>`;
+      <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="drawer"></div><div id="modal"></div>`;
   }
   $("#mlbl").textContent = S.view === "inicio" && S.per !== "mes" ? periodo().label.replace("Ano de ", "") : `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
   const pendHoje = fixasMes(ymOf(hoje())).some(x => x.pend);
   $("#side").innerHTML = NAV.map(([k, n], i) => `${k === "config" || k === "energia" ? "<hr>" : ""}<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}" title="${n}">${ico(k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}</button>`).join("");
   const b = (k, n) => `<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}">${ico(k === "config" ? "mais" : k)}${k === "inicio" && pendHoje ? '<i class="ndot"></i>' : ""}<span>${n}</span></button>`;
-  $("#bot").innerHTML = b("inicio", "Início") + b("lancamentos", "Lançam.") + '<button class="fab" data-act="novo" aria-label="Novo lançamento">+</button>' + b("cartoes", "Cartões") + b("config", "Mais");
+  $("#bot").innerHTML = b("inicio", "Início") + b("lancamentos", "Lançam.") + '<button class="fab" data-act="novo" aria-label="Novo lançamento">+</button>' + b("cartoes", "Cartões") + `<button data-act="menu">${ico("menu")}<span>Menu</span></button>`;
+  $("#bpriv").classList.toggle("on", S.priv);
+  const nome = k => NAV.find(([x]) => x === k)[1];
+  $("#drawer").innerHTML = S.menu ? `<div class="dw-ov" data-act="menuFechar"><nav class="dw"><div class="dw-top"><div class="logo">${LOGO}<span>meu<b>financeiro</b></span></div><small>${esc(S.demo ? "Modo demonstração" : S.user?.email || "")}</small></div>
+    ${MENU.map(([t, ks]) => `${t ? `<div class="dw-t">${t}</div>` : '<div class="dw-sep"></div>'}${ks.map(k => `<button class="${S.view === k ? "on" : ""}" data-act="nav" data-v="${k}">${ico(k)}<span>${nome(k)}</span>${k === "inicio" && pendHoje ? '<i class="ndot" style="position:static;margin-left:auto"></i>' : ""}</button>`).join("")}`).join("")}
+    <div class="dw-sep"></div><button data-act="priv">${ico("olho")}<span>Modo privado</span><span class="ck ${S.priv ? "on" : ""}" style="margin-left:auto;width:22px;height:22px;font-size:11px">✓</span></button>
+    <button data-act="dark">${ico("config")}<span>Tema escuro</span><span class="ck ${document.documentElement.classList.contains("dark") ? "on" : ""}" style="margin-left:auto;width:22px;height:22px;font-size:11px">✓</span></button></nav></div>` : "";
   const main = $("#main"), top = main.scrollTop;
   main.innerHTML = !S.demo && !S.carregado ? '<div class="empty">Carregando…</div>' : V[S.view]();
   main.scrollTop = top;
@@ -683,11 +743,11 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
 const optContas = () => contasOrd().map(c => [c.id, c.nome]);
 const optCats = t => S.data.categorias.filter(c => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome)).map(c => [c.id, `${c.icone} ${c.nome}`]);
 
-function formLanc(orig, cartaoId, pessoaId) {
+function formLanc(orig, cartaoId, pessoaId, dataPre) {
   if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
   const ed = !!orig, o = orig || {};
   const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", subgrupo: o.subgrupo || "", destino: o.contaDestinoId, efetivada: o.efetivada, repetir: "variavel", parcelas: 2 }
-    : { tipo: "despesa", descricao: "", valor: "", data: ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`, origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", subgrupo: "", efetivada: true, repetir: "variavel", parcelas: 2 };
+    : { tipo: "despesa", descricao: "", valor: "", data: dataPre || (ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`), origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", subgrupo: "", efetivada: true, repetir: "variavel", parcelas: 2 };
   openForm({
     title: ed ? "Editar lançamento" : "Novo lançamento", values,
     fields: [
@@ -773,6 +833,8 @@ function formMov(tipo, id) {
       o ? await store.set("movProjeto", o.id, d) : await store.add("movProjeto", d); },
     onDelete: o ? () => store.del("movProjeto", o.id) : null });
 }
+const formObj = crud("objetivos", "oobjetivo", [{ k: "nome", label: "Nome do objetivo" }, { k: "alvo", label: "Valor da meta (R$)", type: "money" }, { k: "guardado", label: "Quanto já tem guardado (R$)", type: "money" }, { k: "prazo", label: "Prazo (opcional)", type: "date" }, { k: "cor", label: "Cor", type: "color" }],
+  () => ({ nome: "", alvo: "", guardado: "", prazo: "", cor: "#2f8f83" }), { in: o => ({ ...o, alvo: moneyIn(o.alvo), guardado: moneyIn(o.guardado) }), out: v => { const alvo = parseMoney(v.alvo); return v.nome.trim() && alvo > 0 ? { nome: v.nome.trim(), alvo, guardado: parseMoney(v.guardado), prazo: v.prazo || "", cor: v.cor } : (toast("Informe o nome e o valor da meta."), null); } });
 const formOrc = crud("orcamentos", "oorçamento", [{ k: "categoriaId", label: "Categoria", type: "select", options: () => optCats("despesa") }, { k: "valor", label: "Limite mensal (R$)", type: "money" }],
   () => ({ valor: "" }), { in: o => ({ ...o, valor: moneyIn(o.valor) }), out: v => { const valor = parseMoney(v.valor); return valor > 0 && v.categoriaId ? { categoriaId: v.categoriaId, valor } : (toast("Informe categoria e valor."), null); } });
 
@@ -788,7 +850,9 @@ const A = {
   abrirProj: d => { S.proj = d.id; $("#main").scrollTop = 0; render(); }, voltarProj: () => { S.proj = null; render(); },
   editProj: d => formProjeto(d.id), novoMov: d => formMov(d.tipo), editMov: d => formMov(null, d.id),
   abrirCartao: d => { S.cartao = d.id; $("#main").scrollTop = 0; render(); }, voltarCartao: () => { S.cartao = null; render(); },
-  nav: d => { S.proj = null; S.cartao = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
+  menu: () => { S.menu = !S.menu; render(); }, menuFechar: (d, e) => { if (e.target.classList.contains("dw-ov")) { S.menu = false; render(); } },
+  priv: () => { S.priv = !S.priv; try { localStorage.setItem("mf-priv", S.priv ? "1" : "0"); } catch (e) {} render(); },
+  nav: d => { S.menu = false; S.proj = null; S.cartao = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
   mes: d => { const n = Number(d.v), p = S.view === "inicio" ? S.per : "mes";
     if (p === "dia" || p === "semana") { S.ref = addDias(S.ref, n * (p === "dia" ? 1 : 7)); S.mes = ymOf(S.ref); }
     else { S.mes = addMes(S.mes, n * (p === "ano" ? 12 : 1)); S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; }
@@ -796,7 +860,14 @@ const A = {
   per: d => { S.per = d.v; if (ymOf(S.ref) !== S.mes) S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; try { localStorage.setItem("mf-per", S.per); } catch (e) {} render(); },
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
-  novo: d => S.view === "energia" ? formEnergia() : S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa),
+  novo: d => S.view === "objetivos" ? formObj() : S.view === "energia" ? formEnergia() : S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa),
+  editObj: d => formObj(d.id),
+  objMov: d => { const o = by("objetivos", d.id), s = Number(d.s); openForm({ title: `${s > 0 ? "Guardar em" : "Retirar de"} ${esc(o.nome)}`, values: { v: "" }, fields: [{ k: "v", label: "Valor (R$)", type: "money" }],
+    onSave: async v => { const x = parseMoney(v.v); if (x <= 0) { toast("Informe o valor."); return false; } await store.set("objetivos", o.id, { ...o, guardado: r2(Math.max(0, (o.guardado || 0) + s * x)) }); } }); },
+  dia: d => { const ls = S.data.lancamentos.filter(l => l.data === d.d);
+    $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>${dataBR(d.d)}</h2>${ls.map(linha).join("") || '<div class="empty">Nenhum lançamento neste dia.</div>'}
+    <div class="acts"><button class="btn" data-act="novoDia" data-d="${d.d}">+ Lançamento neste dia</button><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
+  novoDia: d => formLanc(null, undefined, undefined, d.d),
   editEnergia: d => formEnergia(d.id),
   energiaIni: () => openForm({ title: "Créditos iniciais na Equatorial", values: { v: moneyIn(Number(by("config", "energia")?.creditoInicial) || 0) }, fields: [{ k: "v", label: "Saldo de créditos antes do primeiro mês lançado (kWh)", type: "money" }],
     onSave: v => store.set("config", "energia", { ...(by("config", "energia") || {}), creditoInicial: parseMoney(v.v) }) }),
