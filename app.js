@@ -66,7 +66,7 @@ const CATS_PADRAO = [
 ];
 
 /* ---------- estado ---------- */
-const S = { priv: false, menu: false, per: "mes", ref: hoje(), cartao: null, proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
+const S = { dv: "todos", priv: false, menu: false, per: "mes", ref: hoje(), cartao: null, proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
   data: Object.fromEntries(COLS.map(c => [c, []])) };
 let store = null, fb = null, pend = false;
 const render = () => { if (pend) return; pend = true; const go = () => { pend = false; draw(); }; document.hidden ? setTimeout(go, 0) : requestAnimationFrame(go); };
@@ -74,7 +74,7 @@ const by = (col, id) => S.data[col].find(x => x.id === id);
 const contasOrd = () => [...S.data.contas].sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || a.nome.localeCompare(b.nome));
 const cat = id => id === "__emp" ? { nome: "Empréstimos", icone: "🤝", cor: "#5b6ee0" } : by("categorias", id) || { nome: "Sem categoria", icone: "📦", cor: "#90a4ae" };
 const toast = m => { const t = document.createElement("div"); t.className = "toast"; t.textContent = m; document.body.append(t); setTimeout(() => t.remove(), 2600); };
-try { S.priv = localStorage.getItem("mf-priv") === "1"; } catch (e) {}
+try { S.priv = localStorage.getItem("mf-priv") === "1"; const dv = localStorage.getItem("mf-dv"); if (["todos", "dia", "mes", "ano"].includes(dv)) S.dv = dv; } catch (e) {}
 try { const p = localStorage.getItem("mf-per"); if (["dia", "semana", "mes", "ano"].includes(p)) S.per = p; } catch (e) {}
 try { if (localStorage.getItem("mf-dark") === "1") document.documentElement.classList.add("dark"); } catch (e) {}
 
@@ -655,13 +655,18 @@ function graficoMeses(ms) {
 function listaProjetos() {
   const ps = [...S.data.projetos].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999") || a.nome.localeCompare(b.nome));
   const R = ps.map(p => ({ p, ...resumoProj(p) })), T = k => r2(R.reduce((s0, x) => s0 + x[k], 0)), contr = r2(ps.reduce((s0, p) => s0 + (p.valor || 0), 0));
+  const sm = (G, f) => r2(G.reduce((a, x) => a + f(x), 0)), chave = p => !p.data ? "" : S.dv === "dia" ? p.data : S.dv === "mes" ? p.data.slice(0, 7) : p.data.slice(0, 4);
+  const titulo = k => !k ? "Sem data" : S.dv === "dia" ? `${dataBR(k)} (${DIAS[new Date(k + "T12:00").getDay()]})` : S.dv === "mes" ? `${MESES[Number(k.slice(5)) - 1]} ${k.slice(0, 4)}` : k;
+  const gm = new Map(); if (S.dv !== "todos") R.forEach(x => { const k = chave(x.p); gm.set(k, [...(gm.get(k) || []), x]); });
+  const grupos = S.dv === "todos" ? [["", R]] : [...gm].map(([k, G]) => [titulo(k), G]);
   return `<div class="tools"><h2 style="flex:1">Dilcar Eventos</h2><button class="btn" data-act="editProj">Novo projeto</button></div>
   <div class="stats" style="margin-bottom:14px">${statBox("#5b6ee0", "📋", contr, "Total contratado")}${statBox("#2e9e5b", "＋", T("rec"), "Pagamentos recebidos", "pos")}${statBox("#d9483b", "－", T("gas"), "Gastos dos projetos", "neg")}${statBox("#3b7ddd", "＝", T("lucro"), "Resultado (recebido − gastos)", cls(T("lucro")))}</div>
-  ${R.length ? `<div class="grid cc">${R.map(({ p, rec, gas, lucro, falta }) => `<div class="card pcard" data-act="abrirProj" data-id="${p.id}"><div class="hd">${av(ini(p.nome), p.cor)}<div class="tx"><b>${esc(p.nome)}</b><small>${[p.cliente, p.data ? dataBR(p.data) : ""].filter(Boolean).map(esc).join(" · ") || "Projeto"}</small></div><button data-act="editProj" data-id="${p.id}" title="Editar projeto">${ico("mais")}</button></div>
+  <div class="pertop"><div class="seg per">${[["todos", "Todos"], ["dia", "Por dia"], ["mes", "Por mês"], ["ano", "Por ano"]].map(([k, n]) => `<button class="${S.dv === k ? "on" : ""}" data-act="dv" data-v="${k}">${n}</button>`).join("")}</div><span class="mut">${S.dv === "todos" ? "Todos os projetos, em ordem de data" : "Projetos divididos pela data do evento"}</span></div>
+  ${R.length ? grupos.map(([tit, G]) => `${tit ? `<div class="gh"><h3>${tit}</h3><span>${G.length} ${G.length === 1 ? "projeto" : "projetos"} · contratado <b>${brl(sm(G, x => x.p.valor || 0))}</b> · recebido <b class="pos">${brl(sm(G, x => x.rec))}</b> · gastos <b class="neg">${brl(sm(G, x => x.gas))}</b> · resultado <b class="${cls(sm(G, x => x.lucro))}">${brl(sm(G, x => x.lucro))}</b></span></div>` : ""}<div class="grid cc">${G.map(({ p, rec, gas, lucro, falta }) => `<div class="card pcard" data-act="abrirProj" data-id="${p.id}"><div class="hd">${av(ini(p.nome), p.cor)}<div class="tx"><b>${esc(p.nome)}</b><small>${[p.cliente, p.data ? dataBR(p.data) : ""].filter(Boolean).map(esc).join(" · ") || "Projeto"}</small></div><button data-act="editProj" data-id="${p.id}" title="Editar projeto">${ico("mais")}</button></div>
     <div class="tri"><div><small>Contrato</small>${brl(p.valor || 0)}</div><div><small>Recebido</small><span class="pos">${brl(rec)}</span></div><div><small>Gastos</small><span class="neg">${brl(gas)}</span></div></div>
     <div class="prog"><i style="width:${p.valor ? Math.min(100, rec / p.valor * 100) : 0}%;background:var(--ok)"></i></div>
     <div class="dash-l"></div><div class="fat"><span>Resultado</span><b class="${cls(lucro)}">${brl(lucro)}</b></div>
-    <div class="ft"><span class="tag" style="background:${p.status === "concluido" ? "#2e9e5b" : "#3b7ddd"}">${p.status === "concluido" ? "Concluído" : "Em andamento"}</span><span class="mut">${falta > 0.005 ? "A receber " + brl(falta) : "Contrato quitado"}</span></div></div>`).join("")}</div>` : '<div class="card empty">Nenhum projeto ainda. Toque em "Novo projeto" para criar o primeiro evento.</div>'}
+    <div class="ft"><span class="tag" style="background:${p.status === "concluido" ? "#2e9e5b" : "#3b7ddd"}">${p.status === "concluido" ? "Concluído" : "Em andamento"}</span><span class="mut">${falta > 0.005 ? "A receber " + brl(falta) : "Contrato quitado"}</span></div></div>`).join("")}</div>`).join("") : '<div class="card empty">Nenhum projeto ainda. Toque em "Novo projeto" para criar o primeiro evento.</div>'}
   <div class="sum"><a class="pill" href="dilcar.html">📱 Lançamento rápido pelo celular</a></div>
   <div class="sum">O dinheiro dos projetos fica separado: não entra nas suas contas, no saldo nem nos relatórios pessoais.</div>`;
 }
@@ -915,6 +920,7 @@ function exportarCSV() {
 /* ---------- ações ---------- */
 const A = {
   abrirProj: d => { S.proj = d.id; $("#main").scrollTop = 0; render(); }, voltarProj: () => { S.proj = null; render(); },
+  dv: d => { S.dv = d.v; try { localStorage.setItem("mf-dv", S.dv); } catch (e) {} render(); },
   editProj: d => formProjeto(d.id), novoMov: d => formMov(d.tipo), editMov: d => formMov(null, d.id),
   abrirCartao: d => { S.cartao = d.id; $("#main").scrollTop = 0; render(); }, voltarCartao: () => { S.cartao = null; render(); },
   menu: () => { S.menu = !S.menu; render(); }, menuFechar: (d, e) => { if (e.target.classList.contains("dw-ov")) { S.menu = false; render(); } },
