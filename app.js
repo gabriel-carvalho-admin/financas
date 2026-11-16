@@ -66,7 +66,7 @@ const CATS_PADRAO = [
 ];
 
 /* ---------- estado ---------- */
-const S = { dv: "todos", priv: false, menu: false, per: "mes", ref: hoje(), cartao: null, proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
+const S = { dvRef: hoje(), dv: "todos", priv: false, menu: false, per: "mes", ref: hoje(), cartao: null, proj: null, user: null, demo: false, mes: ymOf(hoje()), view: "inicio", filtro: "todos", busca: "", aba: "despesa", carregado: false,
   data: Object.fromEntries(COLS.map(c => [c, []])) };
 let store = null, fb = null, pend = false;
 const render = () => { if (pend) return; pend = true; const go = () => { pend = false; draw(); }; document.hidden ? setTimeout(go, 0) : requestAnimationFrame(go); };
@@ -652,21 +652,31 @@ function graficoMeses(ms) {
     return bar(x.r, -bw - 2, "#2e9e5b") + bar(x.g, 2, "#d9483b") + `<text x="${cx}" y="${H - 8}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${x.ym.slice(5)}/${x.ym.slice(2, 4)}</text>`; }).join("")}</svg>
   <div class="sum" style="margin-top:4px"><span><i class="lg" style="background:#2e9e5b"></i> Pagamentos recebidos</span><span><i class="lg" style="background:#d9483b"></i> Gastos</span></div>`;
 }
+// Período escolhido na aba Dilcar: todos, um dia, um mês ou um ano (pela data do evento)
+function dvPer() {
+  const r = S.dvRef;
+  if (S.dv === "dia") return { ini: r, fim: r, label: `${dataBR(r)} (${DIAS[new Date(r + "T12:00").getDay()]})`, nome: "neste dia" };
+  if (S.dv === "mes") return { ini: r.slice(0, 7) + "-01", fim: r.slice(0, 7) + "-31", label: `${MESES[Number(r.slice(5, 7)) - 1]} ${r.slice(0, 4)}`, nome: "neste mês" };
+  if (S.dv === "ano") return { ini: r.slice(0, 4) + "-01-01", fim: r.slice(0, 4) + "-12-31", label: r.slice(0, 4), nome: "neste ano" };
+  return null;
+}
+function dvMover(n) { const r = S.dvRef; S.dvRef = S.dv === "dia" ? addDias(r, n) : addMesData(r.slice(0, 7) + "-01", n * (S.dv === "ano" ? 12 : 1)); }
 function listaProjetos() {
-  const ps = [...S.data.projetos].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999") || a.nome.localeCompare(b.nome));
+  const P = dvPer(), todos = [...S.data.projetos].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999") || a.nome.localeCompare(b.nome));
+  const ps = P ? todos.filter(p => p.data && p.data >= P.ini && p.data <= P.fim) : todos;
   const R = ps.map(p => ({ p, ...resumoProj(p) })), T = k => r2(R.reduce((s0, x) => s0 + x[k], 0)), contr = r2(ps.reduce((s0, p) => s0 + (p.valor || 0), 0));
-  const sm = (G, f) => r2(G.reduce((a, x) => a + f(x), 0)), chave = p => !p.data ? "" : S.dv === "dia" ? p.data : S.dv === "mes" ? p.data.slice(0, 7) : p.data.slice(0, 4);
-  const titulo = k => !k ? "Sem data" : S.dv === "dia" ? `${dataBR(k)} (${DIAS[new Date(k + "T12:00").getDay()]})` : S.dv === "mes" ? `${MESES[Number(k.slice(5)) - 1]} ${k.slice(0, 4)}` : k;
-  const gm = new Map(); if (S.dv !== "todos") R.forEach(x => { const k = chave(x.p); gm.set(k, [...(gm.get(k) || []), x]); });
-  const grupos = S.dv === "todos" ? [["", R]] : [...gm].map(([k, G]) => [titulo(k), G]);
+  const prox = P && todos.find(p => p.data > P.fim), ant = P && [...todos].reverse().find(p => p.data && p.data < P.ini), semData = todos.filter(p => !p.data).length;
+  const grupos = [["", R]];
   return `<div class="tools"><h2 style="flex:1">Dilcar Eventos</h2><button class="btn" data-act="editProj">Novo projeto</button></div>
-  <div class="stats" style="margin-bottom:14px">${statBox("#5b6ee0", "📋", contr, "Total contratado")}${statBox("#2e9e5b", "＋", T("rec"), "Pagamentos recebidos", "pos")}${statBox("#d9483b", "－", T("gas"), "Gastos dos projetos", "neg")}${statBox("#3b7ddd", "＝", T("lucro"), "Resultado (recebido − gastos)", cls(T("lucro")))}</div>
-  <div class="pertop"><div class="seg per">${[["todos", "Todos"], ["dia", "Por dia"], ["mes", "Por mês"], ["ano", "Por ano"]].map(([k, n]) => `<button class="${S.dv === k ? "on" : ""}" data-act="dv" data-v="${k}">${n}</button>`).join("")}</div><span class="mut">${S.dv === "todos" ? "Todos os projetos, em ordem de data" : "Projetos divididos pela data do evento"}</span></div>
+  <div class="stats" style="margin-bottom:14px">${statBox("#5b6ee0", "📋", contr, P ? `Contratado (${R.length} ${R.length === 1 ? "evento" : "eventos"})` : "Total contratado")}${statBox("#2e9e5b", "＋", T("rec"), "Pagamentos recebidos", "pos")}${statBox("#d9483b", "－", T("gas"), "Gastos dos projetos", "neg")}${statBox("#3b7ddd", "＝", T("lucro"), "Resultado (recebido − gastos)", cls(T("lucro")))}</div>
+  <div class="pertop"><div class="seg per">${[["todos", "Todos"], ["dia", "Dia"], ["mes", "Mês"], ["ano", "Ano"]].map(([k, n]) => `<button class="${S.dv === k ? "on" : ""}" data-act="dv" data-v="${k}">${n}</button>`).join("")}</div>
+    ${P ? `<div class="mes"><button data-act="dvNav" data-v="-1" aria-label="Anterior">‹</button><span class="lbl" style="min-width:150px">${P.label}</span><button data-act="dvNav" data-v="1" aria-label="Próximo">›</button></div><button class="pill" data-act="dvHoje">Hoje</button>` : '<span class="mut">Todos os projetos, em ordem de data</span>'}</div>
   ${R.length ? grupos.map(([tit, G]) => `${tit ? `<div class="gh"><h3>${tit}</h3><span>${G.length} ${G.length === 1 ? "projeto" : "projetos"} · contratado <b>${brl(sm(G, x => x.p.valor || 0))}</b> · recebido <b class="pos">${brl(sm(G, x => x.rec))}</b> · gastos <b class="neg">${brl(sm(G, x => x.gas))}</b> · resultado <b class="${cls(sm(G, x => x.lucro))}">${brl(sm(G, x => x.lucro))}</b></span></div>` : ""}<div class="grid cc">${G.map(({ p, rec, gas, lucro, falta }) => `<div class="card pcard" data-act="abrirProj" data-id="${p.id}"><div class="hd">${av(ini(p.nome), p.cor)}<div class="tx"><b>${esc(p.nome)}</b><small>${[p.cliente, p.data ? dataBR(p.data) : ""].filter(Boolean).map(esc).join(" · ") || "Projeto"}</small></div><button data-act="editProj" data-id="${p.id}" title="Editar projeto">${ico("mais")}</button></div>
     <div class="tri"><div><small>Contrato</small>${brl(p.valor || 0)}</div><div><small>Recebido</small><span class="pos">${brl(rec)}</span></div><div><small>Gastos</small><span class="neg">${brl(gas)}</span></div></div>
     <div class="prog"><i style="width:${p.valor ? Math.min(100, rec / p.valor * 100) : 0}%;background:var(--ok)"></i></div>
     <div class="dash-l"></div><div class="fat"><span>Resultado</span><b class="${cls(lucro)}">${brl(lucro)}</b></div>
-    <div class="ft"><span class="tag" style="background:${p.status === "concluido" ? "#2e9e5b" : "#3b7ddd"}">${p.status === "concluido" ? "Concluído" : "Em andamento"}</span><span class="mut">${falta > 0.005 ? "A receber " + brl(falta) : "Contrato quitado"}</span></div></div>`).join("")}</div>`).join("") : '<div class="card empty">Nenhum projeto ainda. Toque em "Novo projeto" para criar o primeiro evento.</div>'}
+    <div class="ft"><span class="tag" style="background:${p.status === "concluido" ? "#2e9e5b" : "#3b7ddd"}">${p.status === "concluido" ? "Concluído" : "Em andamento"}</span><span class="mut">${falta > 0.005 ? "A receber " + brl(falta) : "Contrato quitado"}</span></div></div>`).join("")}</div>`).join("") : P && todos.length ? `<div class="card empty">Nenhum evento ${P.nome} (${P.label}).${ant || prox ? `<div class="sum">${ant ? `<button class="pill" data-act="dvIr" data-v="${ant.data}">‹ Anterior: ${esc(ant.nome)} · ${dataBR(ant.data)}</button>` : ""}${prox ? `<button class="pill" data-act="dvIr" data-v="${prox.data}">Próximo: ${esc(prox.nome)} · ${dataBR(prox.data)} ›</button>` : ""}</div>` : ""}</div>` : '<div class="card empty">Nenhum projeto ainda. Toque em "Novo projeto" para criar o primeiro evento.</div>'}
+  ${P && semData ? `<div class="sum">${semData} ${semData === 1 ? "projeto sem data não aparece" : "projetos sem data não aparecem"} aqui; veja em "Todos".</div>` : ""}
   <div class="sum"><a class="pill" href="dilcar.html">📱 Lançamento rápido pelo celular</a></div>
   <div class="sum">O dinheiro dos projetos fica separado: não entra nas suas contas, no saldo nem nos relatórios pessoais.</div>`;
 }
@@ -890,7 +900,7 @@ function formLancarFixa(id) {
     onDelete: l ? () => store.del("lancamentos", l.id) : null, delLabel: "Apagar lançamento do mês" });
 }
 const formProjeto = crud("projetos", "oprojeto", [{ k: "nome", label: "Nome do projeto / evento" }, { k: "cliente", label: "Cliente" }, { k: "data", label: "Data do evento", type: "date" }, { k: "valor", label: "Valor do contrato (R$)", type: "money" }, { k: "status", label: "Situação", type: "select", options: [["andamento", "Em andamento"], ["concluido", "Concluído"]] }, { k: "cor", label: "Cor", type: "color" }],
-  () => ({ nome: "", cliente: "", data: "", valor: "", status: "andamento", cor: PALETA[S.data.projetos.length % PALETA.length] }),
+  () => ({ nome: "", cliente: "", data: S.dv === "dia" ? S.dvRef : "", valor: "", status: "andamento", cor: PALETA[S.data.projetos.length % PALETA.length] }),
   { in: o => ({ ...o, valor: moneyIn(o.valor) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), cliente: (v.cliente || "").trim(), data: v.data || "", valor: parseMoney(v.valor), status: v.status || "andamento", cor: v.cor } : (toast("Informe o nome do projeto."), null) },
   o => S.data.movProjeto.some(x => x.projetoId === o.id) ? "Este projeto tem pagamentos ou gastos. Exclua-os antes." : "");
 function formMov(tipo, id) {
@@ -920,6 +930,7 @@ function exportarCSV() {
 /* ---------- ações ---------- */
 const A = {
   abrirProj: d => { S.proj = d.id; $("#main").scrollTop = 0; render(); }, voltarProj: () => { S.proj = null; render(); },
+  dvNav: d => { dvMover(Number(d.v)); render(); }, dvHoje: () => { S.dvRef = hoje(); render(); }, dvIr: d => { S.dvRef = d.v; render(); },
   dv: d => { S.dv = d.v; try { localStorage.setItem("mf-dv", S.dv); } catch (e) {} render(); },
   editProj: d => formProjeto(d.id), novoMov: d => formMov(d.tipo), editMov: d => formMov(null, d.id),
   abrirCartao: d => { S.cartao = d.id; $("#main").scrollTop = 0; render(); }, voltarCartao: () => { S.cartao = null; render(); },
