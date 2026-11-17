@@ -348,27 +348,31 @@ const sub = l => {
   if (l.emprestimo) return ["Empréstimo", l.vencimento ? "pagar até " + dataBR(l.vencimento) : "", onde, by("pessoas", l.pessoaId)?.nome].filter(Boolean).map(esc).join(" · ");
   return [cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
 };
-const linha = l => {
+const linha = (l, sel) => {
   const c = l.tipo === "transferencia" ? { icone: "⇄", cor: "#5b6ee0" } : l.reembolso ? { icone: "↩", cor: by("pessoas", l.pessoaId)?.cor || "#2e9e5b" } : cat(l.emprestimo ? "__emp" : l.categoriaId);
   const sinal = l.tipo === "receita" ? "pos" : l.tipo === "despesa" ? "neg" : "";
+  if (sel instanceof Set) return `<div class="row ${sel.has(l.id) ? "selr" : ""}" data-act="selL" data-id="${l.id}"><span class="ck ${sel.has(l.id) ? "on" : ""}">✓</span>${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${sub(l)}</small></div><span class="val ${sinal}">${l.tipo === "despesa" ? "-" : ""}${brl(l.valor)}</span></div>`;
   return `<div class="row" data-act="editL" data-id="${l.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${sub(l)}</small></div>
   <span class="val ${sinal}">${l.tipo === "despesa" ? "-" : ""}${brl(l.valor)}</span>${l.cartaoId ? '<span class="ck" style="border:0;color:var(--mut)">💳</span>' : `<button class="ck ${l.efetivada ? "on" : ""}" data-act="toggleL" data-id="${l.id}" title="Efetivada">✓</button>`}</div>`;
 };
-function listaLanc() {
+function lancFiltrados() {
   const q = S.busca.toLowerCase();
   let arr = S.data.lancamentos.filter(l => ymOf(l.data) === S.mes);
   if (S.filtro === "pendentes") arr = arr.filter(l => !l.efetivada && !l.cartaoId);
   else if (S.filtro !== "todos") arr = arr.filter(l => l.tipo === S.filtro);
   if (q) arr = arr.filter(l => (l.descricao + " " + cat(l.categoriaId).nome + " " + (l.subgrupo || "")).toLowerCase().includes(q));
+  return arr.sort((a, b) => b.data.localeCompare(a.data) || a.descricao.localeCompare(b.descricao));
+}
+function listaLanc() {
+  const arr = lancFiltrados(), sel = S.sel, edit = arr.filter(l => l.tipo !== "transferencia");
   if (!arr.length) return '<div class="empty">Nenhum lançamento. Toque em + para adicionar.</div>';
-  arr.sort((a, b) => b.data.localeCompare(a.data) || a.descricao.localeCompare(b.descricao));
-  let h = "", d = "";
-  for (const l of arr) { if (l.data !== d) { d = l.data; h += `<div class="day">${dataBR(d)}</div>`; } h += linha(l); }
+  let h = sel ? `<div class="selbar"><b>${sel.size} ${sel.size === 1 ? "selecionado" : "selecionados"}</b><span class="sp"></span><button class="link" data-act="selTodos">${edit.every(l => sel.has(l.id)) ? "Desmarcar todos" : "Marcar todos"} (${edit.length})</button><button class="btn" data-act="selAplicar" ${sel.size ? "" : "disabled"}>Alterar grupo / subgrupo</button></div>` : "", d = "";
+  for (const l of arr) { if (l.data !== d) { d = l.data; h += `<div class="day">${dataBR(d)}</div>`; } h += l.tipo === "transferencia" && sel ? linha(l) : linha(l, sel); }
   const rec = total(arr.filter(l => l.tipo === "receita")), des = total(arr.filter(l => l.tipo === "despesa"));
   return h + `<div class="sum"><span>Receitas: <b class="pos">${brl(rec)}</b></span><span>Despesas: <b class="neg">${brl(des)}</b></span><span>Resultado: <b class="${cls(rec - des)}">${brl(rec - des)}</b></span></div>`;
 }
 V.lancamentos = () => `<div class="tools">${[["todos", "Todos"], ["despesa", "Despesas"], ["receita", "Receitas"], ["transferencia", "Transf."], ["pendentes", "Pendentes"]].map(([k, n]) => `<button class="pill ${S.filtro === k ? "on" : ""}" data-act="filtro" data-v="${k}">${n}</button>`).join("")}
-  <input class="search" id="busca" placeholder="Pesquisar" value="${esc(S.busca)}"></div><div class="card" id="lista">${listaLanc()}</div>`;
+  <input class="search" id="busca" placeholder="Pesquisar" value="${esc(S.busca)}"><button class="pill ${S.sel ? "on" : ""}" data-act="selModo" title="Selecionar vários lançamentos para trocar o grupo e o subgrupo de uma vez">☑ Selecionar</button></div><div class="card" id="lista">${listaLanc()}</div>`;
 
 function stFatura(c, m = S.mes) {
   const paga = c.pagas?.[m], ft = fatTotal(c.id, m), fech = fechData(c, m), venc = dataNoMes(m, c.vencimento || 10), fechada = hoje() > fech;
@@ -1021,7 +1025,7 @@ const A = {
   abrirCartao: d => { S.cartao = d.id; $("#main").scrollTop = 0; render(); }, voltarCartao: () => { S.cartao = null; render(); },
   menu: () => { S.menu = !S.menu; render(); }, menuFechar: (d, e) => { if (e.target.classList.contains("dw-ov")) { S.menu = false; render(); } },
   priv: () => { S.priv = !S.priv; try { localStorage.setItem("mf-priv", S.priv ? "1" : "0"); } catch (e) {} render(); },
-  nav: d => { S.menu = false; S.proj = null; S.cartao = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
+  nav: d => { S.sel = null; S.menu = false; S.proj = null; S.cartao = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
   mes: d => { const n = Number(d.v), p = S.view === "inicio" ? S.per : "mes";
     if (p === "dia" || p === "semana") { S.ref = addDias(S.ref, n * (p === "dia" ? 1 : 7)); S.mes = ymOf(S.ref); }
     else { S.mes = addMes(S.mes, n * (p === "ano" ? 12 : 1)); S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; }
@@ -1044,6 +1048,16 @@ const A = {
   editEnergia: d => formEnergia(d.id),
   energiaIni: () => openForm({ title: "Créditos iniciais na Equatorial", values: { v: moneyIn(Number(by("config", "energia")?.creditoInicial) || 0) }, fields: [{ k: "v", label: "Saldo de créditos antes do primeiro mês lançado (kWh)", type: "money" }],
     onSave: v => store.set("config", "energia", { ...(by("config", "energia") || {}), creditoInicial: parseMoney(v.v) }) }),
+  selModo: () => { S.sel = S.sel ? null : new Set(); render(); },
+  selL: d => { S.sel.has(d.id) ? S.sel.delete(d.id) : S.sel.add(d.id); const y = $("#main").scrollTop; $("#lista").innerHTML = listaLanc(); $("#main").scrollTop = y; },
+  selTodos: () => { const ids = lancFiltrados().filter(l => l.tipo !== "transferencia").map(l => l.id), tudo = ids.every(i => S.sel.has(i)); ids.forEach(i => tudo ? S.sel.delete(i) : S.sel.add(i)); $("#lista").innerHTML = listaLanc(); },
+  selAplicar: () => { const ls = [...S.sel].map(i => by("lancamentos", i)).filter(Boolean); if (!ls.length) return; const tipos = new Set(ls.map(l => l.tipo));
+    openForm({ title: `Alterar ${ls.length} ${ls.length === 1 ? "lançamento" : "lançamentos"}`, values: { categoriaId: "", subgrupo: "", limpar: false },
+      fields: [{ k: "categoriaId", label: "Novo grupo (categoria)", type: "select", options: () => [["", "— manter o grupo atual —"], ...S.data.categorias.filter(c => tipos.size > 1 || tipos.has(c.tipo)).sort((a, b) => a.nome.localeCompare(b.nome)).map(c => [c.id, `${c.icone} ${c.nome}${tipos.size > 1 ? " (" + c.tipo + ")" : ""}`])] },
+        { k: "subgrupo", label: "Novo subgrupo (vazio = manter o atual)", list: v => [...new Set(S.data.lancamentos.filter(l => l.subgrupo && (!v.categoriaId || l.categoriaId === v.categoriaId)).map(l => l.subgrupo))].sort((a, b) => a.localeCompare(b)) },
+        { k: "limpar", label: "Apagar o subgrupo dos selecionados", type: "check" }],
+      onSave: async v => { const sg = (v.subgrupo || "").trim(); if (!v.categoriaId && !sg && !v.limpar) { toast("Escolha um grupo ou um subgrupo."); return false; }
+        await Promise.all(ls.map(l => store.set("lancamentos", l.id, { ...l, ...(v.categoriaId ? { categoriaId: v.categoriaId } : {}), ...(v.limpar ? { subgrupo: "" } : sg ? { subgrupo: sg } : {}) }))); S.sel = null; toast(`${ls.length} ${ls.length === 1 ? "lançamento alterado" : "lançamentos alterados"}.`); } }); },
   editL: d => { const l = by("lancamentos", d.id); l?.emprestimo ? formEmprestimo(l.pessoaId, l.id) : formLanc(l); },
   emprestar: d => formEmprestimo(d.id),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
