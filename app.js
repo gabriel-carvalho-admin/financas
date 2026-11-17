@@ -979,12 +979,18 @@ function formLancarFixa(id) {
   const f = by("fixas", id); if (!f) return; if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
   const l = lancFixa(f), mes = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
   openForm({ title: `${esc(f.nome)} — ${mes}`,
-    values: { valor: l ? moneyIn(l.valor) : "", vencimento: l?.vencimento || dataNoMes(S.mes, f.dia || 10), paga: !!l?.efetivada, dataPag: l?.efetivada ? l.data : hoje(), contaId: l?.contaId || f.contaId },
+    values: { categoriaId: l?.categoriaId ?? f.categoriaId ?? "", subgrupo: l ? l.subgrupo || "" : f.subgrupo || "", todos: true, valor: l ? moneyIn(l.valor) : "", vencimento: l?.vencimento || dataNoMes(S.mes, f.dia || 10), paga: !!l?.efetivada, dataPag: l?.efetivada ? l.data : hoje(), contaId: l?.contaId || f.contaId },
     fields: [{ k: "valor", label: "Valor deste mês (R$)", type: "money" }, { k: "vencimento", label: "Data de vencimento", type: "date" }, { k: "paga", label: "Já paguei", type: "check", redraw: true },
-      { k: "dataPag", label: "Data do pagamento", type: "date", when: v => v.paga }, { k: "contaId", label: "Conta", type: "select", options: optContas }],
+      { k: "dataPag", label: "Data do pagamento", type: "date", when: v => v.paga }, { k: "contaId", label: "Conta", type: "select", options: optContas },
+      { k: "titulo", type: "titulo", label: "Grupo e subgrupo" }, { k: "categoriaId", label: "Grupo (categoria)", type: "select", redraw: true, options: () => optCats("despesa") },
+      { k: "subgrupo", label: "Subgrupo (opcional)", list: v => [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b)) },
+      { k: "todos", label: "Aplicar a esta conta mensal e a todos os meses já lançados", type: "check" }],
     onSave: async v => { const valor = parseMoney(v.valor); if (valor <= 0 || !v.vencimento) { toast("Informe o valor e o vencimento."); return false; } if (v.paga && !v.dataPag) { toast("Informe a data do pagamento."); return false; }
-      const d = { ...(l || {}), tipo: "despesa", descricao: f.nome, valor, vencimento: v.vencimento, data: v.paga ? v.dataPag : v.vencimento, efetivada: !!v.paga, categoriaId: f.categoriaId || "", subgrupo: f.subgrupo || "", contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: l?.pessoaId || "", recorrencia: "fixa", fixaId: f.id, mesRef: S.mes };
-      l ? await store.set("lancamentos", l.id, d) : await store.add("lancamentos", d); },
+      const d = { ...(l || {}), tipo: "despesa", descricao: f.nome, valor, vencimento: v.vencimento, data: v.paga ? v.dataPag : v.vencimento, efetivada: !!v.paga, categoriaId: v.categoriaId || "", subgrupo: (v.subgrupo || "").trim(), contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: l?.pessoaId || "", recorrencia: "fixa", fixaId: f.id, mesRef: S.mes };
+      l ? await store.set("lancamentos", l.id, d) : await store.add("lancamentos", d);
+      if (v.todos && ((f.categoriaId || "") !== d.categoriaId || (f.subgrupo || "") !== d.subgrupo || S.data.lancamentos.some(x => x.fixaId === f.id && x.id !== l?.id && ((x.categoriaId || "") !== d.categoriaId || (x.subgrupo || "") !== d.subgrupo)))) {
+        await store.set("fixas", f.id, { ...f, categoriaId: d.categoriaId, subgrupo: d.subgrupo });
+        await Promise.all(S.data.lancamentos.filter(x => x.fixaId === f.id && x.id !== l?.id).map(x => store.set("lancamentos", x.id, { ...x, categoriaId: d.categoriaId, subgrupo: d.subgrupo }))); } },
     onDelete: l ? () => store.del("lancamentos", l.id) : null, delLabel: "Apagar lançamento do mês" });
 }
 const formProjeto = crud("projetos", "oprojeto", [{ k: "nome", label: "Nome do projeto / evento" }, { k: "cliente", label: "Cliente" }, { k: "data", label: "Data do evento", type: "date" }, { k: "valor", label: "Valor do contrato (R$)", type: "money" }, { k: "status", label: "Situação", type: "select", options: [["andamento", "Em andamento"], ["concluido", "Concluído"]] }, { k: "cor", label: "Cor", type: "color" }],
