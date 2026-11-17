@@ -13,6 +13,7 @@ const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Ag
 
 /* ---------- utilidades ---------- */
 const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const r2 = n => Math.round(n * 100) / 100;
 const brl = v => { if (S.priv) return "R$ ••••"; v = Math.abs(v) < 0.005 ? 0 : v; return (v < 0 ? "-" : "") + "R$ " + Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
@@ -834,6 +835,25 @@ function draw() {
   main.scrollTop = top;
 }
 
+/* ---------- seletor de emojis (base completa, carregada sob demanda) ---------- */
+let EMODB = null;
+async function abrirEmojis(cb) {
+  const el = document.createElement("div"); el.className = "ov emopk"; el.innerHTML = '<div class="modal emom"><h2>Escolher emoji</h2><div class="empty">Carregando…</div></div>'; document.body.append(el);
+  const fechar = () => el.remove(); el.onclick = e => { if (e.target === el) fechar(); };
+  try { EMODB = EMODB || (await import("./emojis.js")).default; } catch (e) { fechar(); return toast("Não foi possível carregar os emojis (verifique a conexão)."); }
+  let g = 0, q = "";
+  const norm = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const lista = () => { const n = norm(q.trim()); return n ? EMODB.flatMap(x => x[2]).filter(x => norm(x[1]).includes(n)).slice(0, 400) : EMODB[g][2]; };
+  const grade = () => { const ls = lista(); $(".emg", el).innerHTML = ls.map(([e, l]) => `<button type="button" data-e="${e}" title="${esc(l.split(" ")[0] ? l.split(" ").slice(0, 3).join(" ") : "")}">${e}</button>`).join("") || '<div class="empty">Nenhum emoji encontrado.</div>';
+    $$(".emt button", el).forEach((b, i) => b.classList.toggle("on", !q.trim() && i === g)); };
+  el.innerHTML = `<div class="modal emom"><h2>Escolher emoji <button type="button" class="link" data-f style="float:right">Fechar</button></h2>
+    <input class="emq" type="search" placeholder="Buscar (ex.: casa, carro, pizza, coração)" autocomplete="off">
+    <div class="emt">${EMODB.map((x, i) => `<button type="button" data-g="${i}" title="${esc(x[0])}">${x[1]}</button>`).join("")}</div><div class="emn"></div><div class="emg"></div></div>`;
+  const nome = () => { $(".emn", el).textContent = q.trim() ? "Resultados da busca" : EMODB[g][0] + " · " + EMODB[g][2].length; };
+  el.onclick = e => { if (e.target === el || e.target.closest("[data-f]")) return fechar(); const b = e.target.closest("[data-e]"), t = e.target.closest("[data-g]");
+    if (b) { fechar(); cb(b.dataset.e); } else if (t) { g = Number(t.dataset.g); q = ""; $(".emq", el).value = ""; nome(); grade(); $(".emg", el).scrollTop = 0; } };
+  $(".emq", el).oninput = e => { q = e.target.value; nome(); grade(); }; nome(); grade(); $(".emq", el).focus();
+}
 /* ---------- formulários ---------- */
 function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Excluir", extra }) {
   const v = { ...values }, box = $("#modal");
@@ -843,6 +863,7 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
     const val = v[f.k] ?? "";
     if (f.type === "titulo") return `<div class="ftit">${f.label}</div>`;
     if (f.type === "seg") return `<div class="f"><div class="seg">${opts(f).map(([k, n]) => `<button type="button" class="${val === k ? "on" : ""}" data-seg="${f.k}" data-v="${k}">${n}</button>`).join("")}</div></div>`;
+    if (f.type === "emoji") return `<div class="f"><label>${f.label}</label><div class="emo-q">${[...new Set([val, ...EMOJIS])].filter(Boolean).map(e => `<button type="button" class="${val === e ? "on" : ""}" data-seg="${f.k}" data-v="${e}">${e}</button>`).join("")}<button type="button" class="emo-more" data-emo="${f.k}">🔍 Mais emojis</button></div></div>`;
     if (f.type === "check") return `<div class="f chk"><input type="checkbox" id="f-${f.k}" data-k="${f.k}" ${f.redraw ? "data-redraw" : ""} ${val ? "checked" : ""}><label for="f-${f.k}">${f.label}</label></div>`;
     if (f.type === "select") { const o = opts(f); if (!o.some(([k]) => k === val)) v[f.k] = o[0]?.[0] ?? ""; return `<div class="f"><label for="f-${f.k}">${f.label}</label><select id="f-${f.k}" data-k="${f.k}" ${f.redraw ? "data-redraw" : ""}>${o.map(([k, n]) => `<option value="${esc(k)}" ${v[f.k] === k ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`; }
     const t = f.type === "money" ? 'type="text" inputmode="decimal" placeholder="0,00"' : f.type === "number" ? 'type="number" inputmode="numeric"' : `type="${f.type || "text"}"`;
@@ -857,7 +878,8 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
     const form = $("form", box);
     form.oninput = e => { const k = e.target.dataset.k; if (!k) return; v[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value; if (e.target.hasAttribute("data-redraw")) $("#fb", box).innerHTML = body(); };
     form.onclick = async e => {
-      const t = e.target.closest("[data-seg],[data-x]"); if (!t) { if (e.target.classList.contains("ov")) close(); return; }
+      const t = e.target.closest("[data-seg],[data-x],[data-emo]"); if (!t) { if (e.target.classList.contains("ov")) close(); return; }
+      if (t.dataset.emo) return abrirEmojis(e2 => { v[t.dataset.emo] = e2; $("#fb", box).innerHTML = body(); });
       if (t.dataset.seg) { v[t.dataset.seg] = t.dataset.v; $("#fb", box).innerHTML = body(); return; }
       if (t.dataset.x === "close") return close();
       if (!conf || conf !== t.dataset.x) { conf = t.dataset.x; t.textContent = "Confirmar exclusão"; return; }
@@ -937,7 +959,7 @@ const formCartao = crud("cartoes", "ocartão", [{ k: "nome", label: "Nome do car
   () => ({ nome: "", bandeira: "", limite: "", fechamento: 10, vencimento: 17, cor: "#7e22ce" }),
   { in: o => ({ ...o, limite: moneyIn(o.limite) }), out: v => { const dia = x => Math.max(1, Math.min(31, Math.floor(Number(x) || 1))); return v.nome.trim() ? { nome: v.nome.trim(), bandeira: (v.bandeira || "").trim(), limite: parseMoney(v.limite), fechamento: dia(v.fechamento), vencimento: dia(v.vencimento), contaId: v.contaId || "", cor: v.cor } : (toast("Informe o nome."), null); } },
   o => S.data.lancamentos.some(l => l.cartaoId === o.id) ? "Este cartão tem despesas. Exclua-as antes." : "");
-const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", options: [["despesa", "Despesa"], ["receita", "Receita"]] }, { k: "nome", label: "Nome" }, { k: "icone", label: "Ícone", type: "select", options: EMOJIS.map(e => [e, e]) }, { k: "cor", label: "Cor", type: "color" }],
+const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", options: [["despesa", "Despesa"], ["receita", "Receita"]] }, { k: "nome", label: "Nome" }, { k: "icone", label: "Ícone", type: "emoji" }, { k: "cor", label: "Cor", type: "color" }],
   () => ({ tipo: "despesa", nome: "", icone: "📦", cor: "#4a9be0" }),
   { in: o => o, out: v => v.nome.trim() ? { tipo: v.tipo, nome: v.nome.trim(), icone: v.icone, cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.categoriaId === o.id) ? "Esta categoria tem lançamentos." : S.data.orcamentos.some(x => x.categoriaId === o.id) ? "Esta categoria tem orçamento." : "");
