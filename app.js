@@ -428,7 +428,7 @@ const fixasMes = (ym = S.mes) => S.data.fixas.map(f => ({ f, ...statusFixa(f, ym
 function cardFixas() {
   const fs = fixasMes(), pagas = fs.filter(x => x.k === 3).length, tot = r2(fs.reduce((s0, x) => s0 + (x.l?.valor || 0), 0));
   return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>
-  ${fs.map(x => { const c = cat(x.f.categoriaId); return `<div class="row" data-act="lancarFixa" data-id="${x.f.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(x.f.nome)}</div><small>${x.txt}</small></div>
+  ${fs.map(x => { const c = cat(x.f.categoriaId); return `<div class="row" data-act="lancarFixa" data-id="${x.f.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(x.f.nome)}</div><small>${esc(c.nome + (x.f.subgrupo ? " › " + x.f.subgrupo : ""))} · ${x.txt}</small></div>
     <div class="r"><div class="b">${x.l ? brl(x.l.valor) : "—"}</div><span class="tag" style="background:${x.cor}">${x.tag}</span></div><button data-act="editFixa" data-id="${x.f.id}" title="Editar conta mensal">${ico("mais")}</button></div>`; }).join("")
     || '<div class="empty">Cadastre água, luz, internet… e o app lembra você todo mês.</div>'}
   ${fs.length ? `<div class="sum">${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b></div>` : ""}</div>`;
@@ -945,10 +945,10 @@ function formLanc(orig, cartaoId, pessoaId, dataPre) {
     extra: ed && o.grupoId ? { label: "Excluir este e os próximos", fn: () => store.del("lancamentos", S.data.lancamentos.filter(l => l.grupoId === o.grupoId && l.data >= o.data).map(l => l.id)) } : null
   });
 }
-const crud = (col, title, fields, defaults, prep, podeExcluir) => id => {
+const crud = (col, title, fields, defaults, prep, podeExcluir, depois) => id => {
   const o = by(col, id);
   openForm({ title: (o ? "Editar " : "Nov" + title[0] + " ") + title.slice(1), fields, values: o ? prep.in(o) : defaults(),
-    onSave: async v => { const d = prep.out(v); if (!d) return false; o ? await store.set(col, o.id, { ...o, ...d }) : await store.add(col, d); },
+    onSave: async v => { const d = prep.out(v); if (!d) return false; o ? await store.set(col, o.id, { ...o, ...d }) : await store.add(col, d); if (o && depois) await depois(o, d); },
     onDelete: o ? async () => { const motivo = podeExcluir?.(o); if (motivo) return toast(motivo); await store.del(col, o.id); } : null });
 };
 const formConta = crud("contas", "aconta", [{ k: "nome", label: "Nome da conta" }, { k: "saldoInicial", label: "Saldo inicial (R$)", type: "money" }, { k: "cor", label: "Cor", type: "color" }],
@@ -966,8 +966,11 @@ const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", opti
 const formPessoa = crud("pessoas", "apessoa", [{ k: "nome", label: "Nome" }, { k: "grupo", label: "Grupo", type: "select", options: GRUPOS }, { k: "cor", label: "Cor", type: "color" }],
   () => ({ nome: "", grupo: grupoNovo, cor: grupoNovo === "empresas" ? "#5b6ee0" : "#e0564a" }), { in: o => ({ ...o, grupo: grupoDe(o) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), grupo: v.grupo || "familia", cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.pessoaId === o.id) ? "Esta pessoa tem despesas. Troque ou exclua as despesas antes." : "");
-const formFixa = crud("fixas", "aconta mensal", [{ k: "nome", label: "Nome (ex.: Água, Luz)" }, { k: "dia", label: "Dia em que costuma vencer", type: "number" }, { k: "categoriaId", label: "Categoria", type: "select", options: () => optCats("despesa") }, { k: "contaId", label: "Conta em que costuma pagar", type: "select", options: optContas }],
-  () => ({ nome: "", dia: 10 }), { in: o => o, out: v => v.nome.trim() ? { nome: v.nome.trim(), dia: Math.max(1, Math.min(31, Math.floor(Number(v.dia) || 10))), categoriaId: v.categoriaId || "", contaId: v.contaId || "" } : (toast("Informe o nome."), null) });
+const formFixa = crud("fixas", "aconta mensal", [{ k: "nome", label: "Nome (ex.: Água, Luz)" }, { k: "dia", label: "Dia em que costuma vencer", type: "number" }, { k: "categoriaId", label: "Grupo (categoria)", type: "select", redraw: true, options: () => optCats("despesa") },
+  { k: "subgrupo", label: "Subgrupo (opcional — ex.: Energia, Internet)", list: v => [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b)) },
+  { k: "contaId", label: "Conta em que costuma pagar", type: "select", options: optContas }],
+  () => ({ nome: "", dia: 10 }), { in: o => o, out: v => v.nome.trim() ? { nome: v.nome.trim(), dia: Math.max(1, Math.min(31, Math.floor(Number(v.dia) || 10))), categoriaId: v.categoriaId || "", subgrupo: (v.subgrupo || "").trim(), contaId: v.contaId || "" } : (toast("Informe o nome."), null) },
+  null, (o, d) => Promise.all(S.data.lancamentos.filter(l => l.fixaId === o.id && ((l.categoriaId || "") !== d.categoriaId || (l.subgrupo || "") !== d.subgrupo)).map(l => store.set("lancamentos", l.id, { ...l, categoriaId: d.categoriaId, subgrupo: d.subgrupo }))));
 function formLancarFixa(id) {
   const f = by("fixas", id); if (!f) return; if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
   const l = lancFixa(f), mes = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
@@ -976,7 +979,7 @@ function formLancarFixa(id) {
     fields: [{ k: "valor", label: "Valor deste mês (R$)", type: "money" }, { k: "vencimento", label: "Data de vencimento", type: "date" }, { k: "paga", label: "Já paguei", type: "check", redraw: true },
       { k: "dataPag", label: "Data do pagamento", type: "date", when: v => v.paga }, { k: "contaId", label: "Conta", type: "select", options: optContas }],
     onSave: async v => { const valor = parseMoney(v.valor); if (valor <= 0 || !v.vencimento) { toast("Informe o valor e o vencimento."); return false; } if (v.paga && !v.dataPag) { toast("Informe a data do pagamento."); return false; }
-      const d = { ...(l || {}), tipo: "despesa", descricao: f.nome, valor, vencimento: v.vencimento, data: v.paga ? v.dataPag : v.vencimento, efetivada: !!v.paga, categoriaId: f.categoriaId || "", contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: l?.pessoaId || "", recorrencia: "fixa", fixaId: f.id, mesRef: S.mes };
+      const d = { ...(l || {}), tipo: "despesa", descricao: f.nome, valor, vencimento: v.vencimento, data: v.paga ? v.dataPag : v.vencimento, efetivada: !!v.paga, categoriaId: f.categoriaId || "", subgrupo: f.subgrupo || "", contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: l?.pessoaId || "", recorrencia: "fixa", fixaId: f.id, mesRef: S.mes };
       l ? await store.set("lancamentos", l.id, d) : await store.add("lancamentos", d); },
     onDelete: l ? () => store.del("lancamentos", l.id) : null, delLabel: "Apagar lançamento do mês" });
 }
