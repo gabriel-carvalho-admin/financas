@@ -74,7 +74,7 @@ const by = (col, id) => S.data[col].find(x => x.id === id);
 const contasOrd = () => [...S.data.contas].sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || a.nome.localeCompare(b.nome));
 const cat = id => id === "__emp" ? { nome: "Empréstimos", icone: "🤝", cor: "#5b6ee0" } : by("categorias", id) || { nome: "Sem categoria", icone: "📦", cor: "#90a4ae" };
 const toast = m => { const t = document.createElement("div"); t.className = "toast"; t.textContent = m; document.body.append(t); setTimeout(() => t.remove(), 2600); };
-try { S.priv = localStorage.getItem("mf-priv") === "1"; const dv = localStorage.getItem("mf-dv"); if (["todos", "dia", "mes", "ano"].includes(dv)) S.dv = dv; } catch (e) {}
+try { S.priv = localStorage.getItem("mf-priv") === "1"; S.pjEst = localStorage.getItem("mf-pjest") !== "0"; const dv = localStorage.getItem("mf-dv"); if (["todos", "dia", "mes", "ano"].includes(dv)) S.dv = dv; } catch (e) {}
 try { const p = localStorage.getItem("mf-per"); if (["dia", "semana", "mes", "ano"].includes(p)) S.per = p; } catch (e) {}
 try { if (localStorage.getItem("mf-dark") === "1") document.documentElement.classList.add("dark"); } catch (e) {}
 
@@ -175,10 +175,10 @@ function movimentos(contaId) {
     }
   }
   for (const c of S.data.cartoes) {
-    for (const [ym, p] of Object.entries(c.pagas || {})) if (p.contaId === contaId) out.push({ d: p.data, v: -p.valor, ok: true, t: "d" });
+    for (const [ym, p] of Object.entries(c.pagas || {})) if (p.contaId === contaId) out.push({ d: p.data, v: -p.valor, ok: true, t: "d", f: 1 });
     if (c.contaId === contaId) {
       const meses = new Set(S.data.lancamentos.filter(l => l.cartaoId === c.id).map(fatMes));
-      for (const ym of meses) if (!c.pagas?.[ym]) out.push({ d: dataNoMes(ym, c.vencimento || 10), v: -fatTotal(c.id, ym), ok: false, t: "d" });
+      for (const ym of meses) if (!c.pagas?.[ym]) out.push({ d: dataNoMes(ym, c.vencimento || 10), v: -fatTotal(c.id, ym), ok: false, t: "d", f: 1 });
     }
   }
   return out;
@@ -699,17 +699,76 @@ function paginaProjeto(p) {
 }
 V.dilcar = () => { const p = S.proj && by("projetos", S.proj); return p ? paginaProjeto(p) : listaProjetos(); };
 /* ---------- Projeção de saldo ---------- */
+// Calcula, mês a mês, o que entra, o que sai (faturas separadas) e o saldo previsto em todas as contas
+function calcProjecao(n) {
+  const mv = S.data.contas.flatMap(c => movimentos(c.id)), mlab = ym => `${MESES[Number(ym.slice(5)) - 1]} ${ym.slice(0, 4)}`;
+  const saldoFim = ym => r2(S.data.contas.reduce((a, c) => a + resumoConta(c, ym).previsto, 0));
+  const hj = ymOf(hoje());
+  const estFix = ym => S.data.fixas.filter(f => !lancFixa(f, ym)).map(f => { const ult = S.data.lancamentos.filter(l => l.fixaId === f.id && l.mesRef).sort((a, b) => b.mesRef.localeCompare(a.mesRef))[0]; return ult ? { f, valor: ult.valor, ref: ult.mesRef } : null; }).filter(Boolean);
+  let ant = saldoFim(addMes(S.mes, -1)), acum = 0;
+  const meses = Array.from({ length: n }, (_, i) => {
+    const ym = addMes(S.mes, i), doM = mv.filter(x => ymOf(x.d) === ym), entradas = r2(doM.filter(x => x.t === "r").reduce((s, x) => s + x.v, 0)),
+      faturas = r2(-doM.filter(x => x.t === "d" && x.f).reduce((s, x) => s + x.v, 0)), outras = r2(-doM.filter(x => x.t === "d" && !x.f).reduce((s, x) => s + x.v, 0)),
+      est = ym >= hj ? estFix(ym) : [], estTot = r2(est.reduce((s, e) => s + e.valor, 0)), saldo = saldoFim(ym);
+    if (S.pjEst) acum = r2(acum + estTot);
+    const x = { ym, nome: mlab(ym), ini: ant, entradas, faturas, outras, est, estTot: S.pjEst ? estTot : 0, saldo, saldoAj: r2(saldo - acum) };
+    x.saidas = r2(outras + faturas + x.estTot); x.res = r2(entradas - x.saidas); ant = saldo; return x;
+  });
+  // saldo inicial ajustado do 1º mês e variação de cada mês
+  let prev = meses[0].ini; meses.forEach(x => { x.var = r2(x.saldoAj - prev); prev = x.saldoAj; });
+  return meses;
+}
 V.projecao = () => {
-  const meses = Array.from({ length: 12 }, (_, i) => addMes(S.mes, i)), d = meses.map(ym => { const rs = S.data.contas.map(c => resumoConta(c, ym)); return { ym, rec: total(doMes("receita", ym)), des: total(doMes("despesa", ym)), saldo: r2(rs.reduce((a, r) => a + r.previsto, 0)) }; });
-  const mx = Math.max(...d.map(x => Math.max(x.rec, x.des, x.saldo)), 1), mn = Math.min(...d.map(x => x.saldo), 0), W = 720, H = 240, base = H - 28, y = v => base - (v - mn) / (mx - mn || 1) * (base - 16), slot = (W - 20) / 12, bw = Math.min(16, slot / 2 - 4), lab = ym => `${MESES[Number(ym.slice(5)) - 1].slice(0, 3).toLowerCase()}/${ym.slice(2, 4)}`;
-  const pts = d.map((x, i) => `${(10 + slot * i + slot / 2).toFixed(1)},${y(x.saldo).toFixed(1)}`).join(" ");
-  return `<h2 style="margin-bottom:12px">Projeção de saldo <small class="mut" style="font-weight:400;font-size:13px">próximos 12 meses a partir de ${lab(S.mes)}</small></h2>
-  <div class="card" style="margin-bottom:14px"><svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" y1="${y(0)}" x2="${W - 6}" y2="${y(0)}" stroke="currentColor" opacity=".25"/>
-    ${d.map((x, i) => { const cx = 10 + slot * i + slot / 2; return `<rect x="${cx - bw - 1}" y="${y(x.rec)}" width="${bw}" height="${Math.max(0, y(0) - y(x.rec))}" rx="3" fill="#2e9e5b" opacity=".55"><title>Receitas: ${brl(x.rec)}</title></rect><rect x="${cx + 1}" y="${y(x.des)}" width="${bw}" height="${Math.max(0, y(0) - y(x.des))}" rx="3" fill="#d9483b" opacity=".55"><title>Despesas: ${brl(x.des)}</title></rect><text x="${cx}" y="${H - 8}" font-size="10" text-anchor="middle" fill="currentColor" opacity=".6">${lab(x.ym)}</text>`; }).join("")}
-    <polyline points="${pts}" fill="none" stroke="#3b7ddd" stroke-width="2.5"/>${d.map((x, i) => `<circle cx="${10 + slot * i + slot / 2}" cy="${y(x.saldo)}" r="3.5" fill="#3b7ddd"><title>${lab(x.ym)}: ${brl(x.saldo)}</title></circle>`).join("")}</svg>
-    <div class="sum"><span><i class="lg" style="background:#2e9e5b"></i>Receitas</span><span><i class="lg" style="background:#d9483b"></i>Despesas</span><span><i class="lg" style="background:#3b7ddd"></i>Saldo previsto no fim do mês</span></div></div>
-  <div class="card"><div style="overflow:auto"><table><thead><tr><th>Mês</th><th>Receitas</th><th>Despesas</th><th>Resultado do mês</th><th>Saldo previsto</th></tr></thead><tbody>${d.map(x => `<tr><td>${MESES[Number(x.ym.slice(5)) - 1]} ${x.ym.slice(0, 4)}</td><td class="pos">${brl(x.rec)}</td><td class="neg">${brl(x.des)}</td><td class="${cls(x.rec - x.des)}">${brl(x.rec - x.des)}</td><td class="b ${cls(x.saldo)}">${brl(x.saldo)}</td></tr>`).join("")}</tbody></table></div>
-  <div class="sum">Considera o que já está lançado: despesas fixas e parceladas dos próximos meses, faturas de cartão em aberto e lançamentos pendentes. Contas mensais ainda sem valor (água, luz) não entram.</div></div>`;
+  const n = S.pjN || 12, d = calcProjecao(n), W = 720, H = 310, top = 26, slot = (W - 20) / n, lab = ym => `${MESES[Number(ym.slice(5)) - 1].slice(0, 3).toLowerCase()}/${ym.slice(2, 4)}`;
+  const saldoHj = r2(S.data.contas.reduce((a, c) => a + resumoConta(c, ymOf(hoje()), "0000-01-01", hoje()).saldo, 0)), ult = d[d.length - 1], menor = d.reduce((m, x) => x.saldoAj < m.saldoAj ? x : m, d[0]), maior = d.reduce((m, x) => x.saldoAj > m.saldoAj ? x : m, d[0]);
+  const neg = d.filter(x => x.saldoAj < -0.005), mediaRes = r2(d.reduce((s, x) => s + x.res, 0) / d.length), maisCaro = d.reduce((m, x) => x.saidas > m.saidas ? x : m, d[0]);
+  const sMax = Math.max(...d.map(x => x.saldoAj), 1), sMin = Math.min(...d.map(x => x.saldoAj)), mn = sMin < 0 ? sMin : sMin - (sMax - sMin) * .35 - 1, lb = 190, y = v => lb - (v - mn) / (sMax - mn || 1) * (lb - top), bb = H - 34, bmx = Math.max(...d.map(x => Math.max(x.entradas, x.saidas)), 1), yb = v => bb - v / bmx * 56, cx = i => 10 + slot * i + slot / 2, bw = Math.min(18, slot / 2 - 3);
+  const pts = d.map((x, i) => `${cx(i).toFixed(1)},${y(x.saldoAj).toFixed(1)}`), area = `${cx(0).toFixed(1)},${lb} ${pts.join(" ")} ${cx(n - 1).toFixed(1)},${lb}`, z = sMin < 0 || mn <= 0;
+  const k = v => S.priv ? "••" : Math.abs(v) >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + " mil" : Math.round(v).toLocaleString("pt-BR");
+  const alerta = neg.length ? `<div class="card" style="border-left:4px solid #d9483b;margin-bottom:12px"><b class="neg">⚠ Atenção: o saldo fica negativo em ${neg.length} ${neg.length === 1 ? "mês" : "meses"}</b><div class="mut" style="margin-top:4px">A partir de <b>${neg[0].nome}</b>. O ponto mais baixo é <b class="neg">${brl(menor.saldoAj)}</b> em ${menor.nome}. Toque no mês para ver o que pesa.</div></div>`
+    : `<div class="card" style="border-left:4px solid #2e9e5b;margin-bottom:12px"><b class="pos">✓ Saldo positivo em todos os meses</b><div class="mut" style="margin-top:4px">O ponto mais baixo é <b>${brl(menor.saldoAj)}</b> em ${menor.nome}. Em ${ult.nome} você deve ter <b class="${cls(ult.saldoAj)}">${brl(ult.saldoAj)}</b>.</div></div>`;
+  const st = (rot, v, sub, c = "") => `<div class="card"><small class="mut">${rot}</small><div class="v ${c}" style="font-weight:700;font-size:17px;margin:2px 0">${brl(v)}</div><small class="mut">${sub}</small></div>`;
+  return `<h2 style="margin-bottom:4px">Projeção de saldo</h2><div class="mut" style="margin-bottom:12px">Quanto você deve ter nas contas no fim de cada mês, a partir do que já está lançado.</div>
+  <div class="pertop"><div class="seg per">${[[3, "3 meses"], [6, "6 meses"], [12, "12 meses"]].map(([v, t]) => `<button class="${n === v ? "on" : ""}" data-act="pjN" data-v="${v}">${t}</button>`).join("")}</div><span class="mut">de <b>${lab(d[0].ym)}</b> a <b>${lab(ult.ym)}</b></span></div>
+  ${alerta}
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:12px">
+    ${st("Saldo hoje", saldoHj, "o que está nas contas agora", cls(saldoHj))}
+    ${st("Saldo em " + lab(ult.ym), ult.saldoAj, `${ult.saldoAj >= saldoHj ? "+" : "−"}${brl(Math.abs(r2(ult.saldoAj - saldoHj)))} em relação a hoje`, cls(ult.saldoAj))}
+    ${st("Menor saldo", menor.saldoAj, "em " + menor.nome, cls(menor.saldoAj))}
+    ${st("Sobra média por mês", mediaRes, "entradas − saídas", cls(mediaRes))}
+  </div>
+  <div class="card" style="margin-bottom:14px"><svg viewBox="0 0 ${W} ${H}" style="width:100%">
+    ${z ? `<rect x="6" y="${y(0)}" width="${W - 12}" height="${Math.max(0, lb + 4 - y(0))}" fill="#d9483b" opacity=".08"/><line x1="6" y1="${y(0)}" x2="${W - 6}" y2="${y(0)}" stroke="currentColor" opacity=".3" stroke-dasharray="4 3"/><text x="8" y="${y(0) - 4}" font-size="9" fill="currentColor" opacity=".55">R$ 0</text>` : ""}
+    <text x="8" y="${bb - 62}" font-size="9" fill="currentColor" opacity=".55">entradas e saídas do mês</text><line x1="6" y1="${bb}" x2="${W - 6}" y2="${bb}" stroke="currentColor" opacity=".15"/>
+    ${d.map((x, i) => `<g data-act="projMes" data-ym="${x.ym}" style="cursor:pointer"><rect x="${cx(i) - slot / 2}" y="0" width="${slot}" height="${H}" fill="transparent"/>
+      <rect x="${cx(i) - bw - 1}" y="${yb(x.entradas)}" width="${bw}" height="${Math.max(1, bb - yb(x.entradas))}" rx="3" fill="#2e9e5b" opacity=".6"><title>Entradas: ${brl(x.entradas)}</title></rect>
+      <rect x="${cx(i) + 1}" y="${yb(x.saidas)}" width="${bw}" height="${Math.max(1, bb - yb(x.saidas))}" rx="3" fill="#d9483b" opacity=".6"><title>Saídas: ${brl(x.saidas)}</title></rect>
+      <text x="${cx(i)}" y="${H - 12}" font-size="10" text-anchor="middle" fill="currentColor" opacity=".65">${lab(x.ym)}</text></g>`).join("")}
+    <polygon points="${area}" fill="#3b7ddd" opacity=".08"/><polyline points="${pts.join(" ")}" fill="none" stroke="#3b7ddd" stroke-width="2.5" pointer-events="none"/>
+    ${d.map((x, i) => `<circle cx="${cx(i)}" cy="${y(x.saldoAj)}" r="${x === menor ? 5.5 : 3.8}" fill="${x.saldoAj < 0 ? "#d9483b" : "#3b7ddd"}" stroke="${x === menor ? "#fff" : "none"}" stroke-width="2" pointer-events="none"/>${n <= 6 || i % 2 === 0 || x === menor ? `<text x="${cx(i)}" y="${y(x.saldoAj) - 9}" font-size="9.5" font-weight="700" text-anchor="middle" fill="${x.saldoAj < 0 ? "#d9483b" : "currentColor"}" pointer-events="none">${k(x.saldoAj)}</text>` : ""}`).join("")}</svg>
+    <div class="sum"><span><i class="lg" style="background:#3b7ddd"></i>Saldo no fim do mês</span><span><i class="lg" style="background:#2e9e5b"></i>Entradas</span><span><i class="lg" style="background:#d9483b"></i>Saídas (inclui faturas)</span></div>
+    <div class="sum">Toque em um mês para ver de onde vem cada valor. O ponto maior marca o menor saldo; as barras mostram entradas e saídas.</div></div>
+  <div class="card" style="margin-bottom:14px"><h3>Mês a mês</h3>
+    ${d.map(x => `<div class="row" data-act="projMes" data-ym="${x.ym}"><div class="tx"><div><b>${x.nome}</b> ${x.saldoAj < 0 ? '<span class="tag" style="background:#d9483b">Negativo</span>' : x === menor && menor.saldoAj !== maior.saldoAj ? '<span class="tag" style="background:#f29a38">Menor saldo</span>' : x === maior && menor.saldoAj !== maior.saldoAj ? '<span class="tag" style="background:#2e9e5b">Maior saldo</span>' : ""}</div>
+      <small><span class="pos">+${brl(x.entradas)}</span> · <span class="neg">−${brl(x.saidas)}</span>${x.faturas ? ` <span class="mut">(faturas ${brl(x.faturas)})</span>` : ""} · <span class="${cls(x.res)}">${x.res >= 0 ? "sobra" : "falta"} ${brl(Math.abs(x.res))}</span></small></div>
+      <div class="r"><div class="b ${cls(x.saldoAj)}">${brl(x.saldoAj)}</div><small class="${cls(x.var)}">${x.var >= 0 ? "▲" : "▼"} ${brl(Math.abs(x.var))}</small></div></div>`).join("")}</div>
+  <div class="card"><h3>Como é calculado</h3>
+    <div class="row" data-act="pjEst"><div class="tx"><div>Estimar contas mensais ainda sem valor</div><small>Água, luz etc. entram com o valor da última conta lançada. Ligado, o saldo fica mais realista.</small></div><span class="ck ${S.pjEst ? "on" : ""}">✓</span></div>
+    <div class="sum" style="justify-content:flex-start;flex-direction:column;align-items:flex-start;gap:4px"><span>• Parte do saldo atual das contas e soma o que já está lançado: receitas, despesas fixas e parceladas, e lançamentos pendentes.</span><span>• Compras no cartão saem da conta no <b>vencimento da fatura</b>, não no dia da compra.</span><span>• Transferências entre suas contas não mudam o saldo total.</span><span>• Mês mais pesado do período: <b>${maisCaro.nome}</b> (saídas de ${brl(maisCaro.saidas)}).</span></div></div>`;
+};
+const PJ = {
+  pjN: d => { S.pjN = Number(d.v); render(); }, pjEst: () => { S.pjEst = !S.pjEst; try { localStorage.setItem("mf-pjest", S.pjEst ? "1" : "0"); } catch (e) {} render(); },
+  projMes: d => { const x = calcProjecao(S.pjN || 12).find(m => m.ym === d.ym); if (!x) return;
+    const ls = S.data.lancamentos.filter(l => !l.cartaoId && ymOf(l.data) === x.ym && l.tipo !== "transferencia").sort((a, b) => a.data.localeCompare(b.data));
+    const fat = S.data.cartoes.map(c => ({ c, v: fatTotal(c.id, x.ym), paga: c.pagas?.[x.ym] })).filter(f => f.v > 0 || f.paga);
+    const porConta = S.data.contas.map(c => ({ c, v: resumoConta(c, x.ym).previsto }));
+    $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:540px"><h2>${x.nome}</h2>
+      <div class="leg" style="margin-bottom:10px">${linhaInfo("Saldo no início do mês", brl(x.ini), cls(x.ini))}${linhaInfo("+ Entradas", brl(x.entradas), "pos")}${linhaInfo("− Contas e despesas", brl(x.outras), "neg")}${linhaInfo("− Faturas de cartão", brl(x.faturas), "neg")}${x.estTot ? linhaInfo("− Contas mensais estimadas", brl(x.estTot), "neg") : ""}${linhaInfo("= Saldo no fim do mês", brl(x.saldoAj), cls(x.saldoAj))}</div>
+      ${fat.length ? `<div class="sec"><span>Faturas de cartão com vencimento no mês</span></div>${fat.map(f => `<div class="row"><div class="tx"><div>${esc(f.c.nome)}</div><small>vence dia ${pad(Number(dataNoMes(x.ym, f.c.vencimento || 10).slice(8)))} · ${f.paga ? "paga" : "em aberto"}</small></div><div class="b ${f.paga ? "" : "neg"}">${brl(f.paga ? f.paga.valor : f.v)}</div></div>`).join("")}` : ""}
+      ${x.est.length && S.pjEst ? `<div class="sec"><span>Contas mensais estimadas (sem valor lançado)</span></div>${x.est.map(e => `<div class="row"><div class="tx"><div>${esc(e.f.nome)}</div><small>baseado em ${MESES[Number(e.ref.slice(5)) - 1].toLowerCase()}/${e.ref.slice(0, 4)}</small></div><div class="b neg">≈ ${brl(e.valor)}</div></div>`).join("")}` : ""}
+      <div class="sec"><span>Saldo previsto por conta</span></div>${porConta.map(p => `<div class="row"><div class="tx">${esc(p.c.nome)}</div><div class="b ${cls(p.v)}">${brl(p.v)}</div></div>`).join("")}
+      <div class="sec"><span>Lançamentos do mês em conta (${ls.length})</span></div>${ls.map(l => `<div class="day" style="padding:8px 4px 0">${dataBR(l.data)}</div>${linha(l)}`).join("") || '<div class="empty">Nenhum lançamento.</div>'}
+      <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; }
 };
 /* ---------- Calendário ---------- */
 // Lista separada por grupo (categoria), com subtotal de cada grupo
@@ -929,6 +988,7 @@ function exportarCSV() {
 
 /* ---------- ações ---------- */
 const A = {
+  ...PJ,
   abrirProj: d => { S.proj = d.id; $("#main").scrollTop = 0; render(); }, voltarProj: () => { S.proj = null; render(); },
   dvNav: d => { dvMover(Number(d.v)); render(); }, dvHoje: () => { S.dvRef = hoje(); render(); }, dvIr: d => { S.dvRef = d.v; render(); },
   dv: d => { S.dv = d.v; try { localStorage.setItem("mf-dv", S.dv); } catch (e) {} render(); },
