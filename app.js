@@ -1,3 +1,4 @@
+import { iniciarFlutuantes } from "./flutuante.js";
 // Meu Financeiro — app de finanças pessoais (Firebase Auth + Firestore)
 const firebaseConfig = {
   apiKey: "AIzaSyBmFTUgIvcMGA9A4B5Py6Rw3SIO7F9E2w0",
@@ -822,6 +823,7 @@ function draw() {
       <div class="mes"><button data-act="mes" data-v="-1" aria-label="Mês anterior">‹</button><span class="lbl" id="mlbl"></span><button data-act="mes" data-v="1" aria-label="Próximo mês">›</button></div>
       <button class="fab" data-act="novo" aria-label="Novo lançamento">+</button></header>
       <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="drawer"></div><div id="modal"></div>`;
+    iniciarFlutuantes();
   }
   $("#mlbl").textContent = S.view === "inicio" && S.per !== "mes" ? periodo().label.replace("Ano de ", "") : `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
   const pendHoje = fixasVencidas(ymOf(hoje())).length > 0;
