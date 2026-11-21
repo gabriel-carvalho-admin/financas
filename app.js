@@ -820,6 +820,7 @@ function draw() {
   if (!S.user && !S.demo) return;
   if (!$("#app")) {
     root.innerHTML = `<div id="app"><header class="top"><button class="hb" data-act="menu" aria-label="Abrir menu">${ico("menu")}</button><div class="logo">${LOGO}<span>meu<b>financeiro</b></span></div><span class="sp"></span>
+      <button class="hb" data-w="notas" title="Bloco de notas" aria-label="Bloco de notas">📝</button><button class="hb" data-w="calc" title="Calculadora" aria-label="Calculadora">🧮</button>
       <button class="hb" id="bpriv" data-act="priv" aria-label="Modo privado: esconder valores" title="Modo privado">${ico("olho")}</button>
       <div class="mes"><button data-act="mes" data-v="-1" aria-label="Mês anterior">‹</button><span class="lbl" id="mlbl"></span><button data-act="mes" data-v="1" aria-label="Próximo mês">›</button></div>
       <button class="fab" data-act="novo" aria-label="Novo lançamento">+</button></header>

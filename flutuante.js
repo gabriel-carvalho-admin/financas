@@ -28,12 +28,12 @@ export function sincronizarNotas(doc, carregado) {
 export function iniciarFlutuantes(opc = {}) {
   gravarNota = opc.gravar || null;
   if (document.getElementById("flut")) return;
-  const raiz = el(`<div id="flut"><div class="flb"><button type="button" data-w="notas" title="Bloco de notas" aria-label="Bloco de notas">📝</button><button type="button" data-w="calc" title="Calculadora" aria-label="Calculadora">🧮</button></div></div>`);
+  const raiz = el(`<div id="flut"></div>`);
   document.body.append(raiz);
   const estado = LS.get("mf-flut", {}), salvar = () => LS.set("mf-flut", estado), wins = {};
   const defs = {
     notas: { t: "📝 Bloco de notas", w: 300, h: 300, corpo: `<textarea class="fnota" placeholder="Anote aqui… (sincroniza com seus outros aparelhos)" spellcheck="true"></textarea><div class="fnb"><button type="button" data-n="copiar">Copiar</button><button type="button" data-n="limpar">Limpar</button><span class="fcont"></span></div>` },
-    calc: { t: "🧮 Calculadora", w: 264, h: 0, corpo: `<div class="fhist"></div><input class="fdisp" inputmode="none" autocomplete="off" placeholder="0" aria-label="Expressão"><div class="fkeys">${["C", "(", ")", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "0", ",", "⌫", "="].map(k => `<button type="button" class="${"÷×−+".includes(k) ? "op" : k === "=" ? "eq" : k === "C" || k === "⌫" ? "fn" : ""}" data-k="${k}">${k}</button>`).join("")}</div><div class="fnb"><button type="button" data-k="%">%</button><button type="button" data-n="copiarR">Copiar resultado</button></div>` }
+    calc: { t: "🧮 Calculadora", w: 264, h: 0, corpo: `<div class="fhist"></div><input class="fdisp" inputmode="none" autocomplete="off" placeholder="0" aria-label="Expressão"><div class="fkeys">${["C", "⌫", "%", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "00", "0", ",", "="].map(k => `<button type="button" class="${"÷×−+%".includes(k) ? "op" : k === "=" ? "eq" : k === "C" || k === "⌫" ? "fn" : ""}" data-k="${k}">${k}</button>`).join("")}</div><div class="fnb"><button type="button" data-n="copiarR">Copiar resultado</button></div>` }
   };
   function posicionar(w, id) { const p = estado[id] || {}, r = w.getBoundingClientRect(); let x = p.x, y = p.y; if (x == null) { x = innerWidth - r.width - 16; y = id === "calc" ? 70 : innerHeight - r.height - 100; if (id === "notas" && innerWidth >= 700) { x -= 276; y = 70; } } w.style.left = clamp(x, 4, Math.max(4, innerWidth - r.width - 4)) + "px"; w.style.top = clamp(y, 4, Math.max(4, innerHeight - r.height - 4)) + "px"; }
   function abrir(id) {
@@ -45,7 +45,7 @@ export function iniciarFlutuantes(opc = {}) {
       ta.oninput = () => { nota = { texto: ta.value, ts: Date.now() }; sujo = true; LS.set("mf-notas", nota); c(); clearTimeout(tmr); tmr = setTimeout(enviar, 700); }; ta.addEventListener("flut-atualizada", c); setInterval(() => { if (!w.isConnected) return; c(); }, 1500); }
     else w.querySelector(".fdisp").focus({ preventScroll: true });
   }
-  function marcar() { raiz.querySelectorAll(".flb button").forEach(b => b.classList.toggle("on", !!wins[b.dataset.w])); }
+  function marcar() { document.querySelectorAll("[data-w]").forEach(b => b.classList.toggle("on", !!wins[b.dataset.w])); }
   function ligar(w, id) {
     const h = w.querySelector("header"); let dr = null;
     h.addEventListener("pointerdown", e => { if (e.target.closest("button") || estado[id]?.fixa) return; const r = w.getBoundingClientRect(); dr = { dx: e.clientX - r.left, dy: e.clientY - r.top }; h.setPointerCapture(e.pointerId); w.classList.add("arr"); });
@@ -70,8 +70,9 @@ export function iniciarFlutuantes(opc = {}) {
     else { if (w.dataset.res && di.value === w.dataset.res && /\d|,/.test(k)) { di.value = ""; hi.textContent = ""; } di.value += k; delete w.dataset.res; }
     di.focus({ preventScroll: true });
   }
-  raiz.querySelector(".flb").addEventListener("click", e => { const b = e.target.closest("button[data-w]"); if (b) abrir(b.dataset.w); });
+  document.addEventListener("click", e => { const b = e.target.closest("[data-w]"); if (b && defs[b.dataset.w]) abrir(b.dataset.w); });
   addEventListener("resize", () => Object.entries(wins).forEach(([id, w]) => posicionar(w, id)));
+  setTimeout(marcar, 0);
   // reabre as janelas que estavam fixadas
   Object.entries(estado).forEach(([id, e]) => { if (e?.fixa && e.aberta && defs[id]) abrir(id); });
 }
