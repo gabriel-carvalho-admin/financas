@@ -1,4 +1,4 @@
-import { iniciarFlutuantes } from "./flutuante.js";
+import { iniciarFlutuantes, sincronizarNotas } from "./flutuante.js";
 // Meu Financeiro — app de finanças pessoais (Firebase Auth + Firestore)
 const firebaseConfig = {
   apiKey: "AIzaSyBmFTUgIvcMGA9A4B5Py6Rw3SIO7F9E2w0",
@@ -816,6 +816,7 @@ V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" s
 /* ---------- desenho ---------- */
 function draw() {
   const root = $("#root");
+  if (S.carregado || S.demo) sincronizarNotas(by("config", "notas"), true);
   if (!S.user && !S.demo) return;
   if (!$("#app")) {
     root.innerHTML = `<div id="app"><header class="top"><button class="hb" data-act="menu" aria-label="Abrir menu">${ico("menu")}</button><div class="logo">${LOGO}<span>meu<b>financeiro</b></span></div><span class="sp"></span>
@@ -823,7 +824,7 @@ function draw() {
       <div class="mes"><button data-act="mes" data-v="-1" aria-label="Mês anterior">‹</button><span class="lbl" id="mlbl"></span><button data-act="mes" data-v="1" aria-label="Próximo mês">›</button></div>
       <button class="fab" data-act="novo" aria-label="Novo lançamento">+</button></header>
       <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="drawer"></div><div id="modal"></div>`;
-    iniciarFlutuantes();
+    iniciarFlutuantes({ gravar: o => store.set("config", "notas", o) });
   }
   $("#mlbl").textContent = S.view === "inicio" && S.per !== "mes" ? periodo().label.replace("Ano de ", "") : `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
   const pendHoje = fixasVencidas(ymOf(hoje())).length > 0;

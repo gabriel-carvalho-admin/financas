@@ -14,13 +14,25 @@ function calcular(txt) {
 }
 const fmt = n => String(n).replace(".", ",");
 
-export function iniciarFlutuantes() {
+// ---- notas sincronizadas (documento "config/notas" no Firestore; cópia local para uso sem internet) ----
+let gravarNota = null, nota = (() => { const v = LS.get("mf-notas", ""); return typeof v === "string" ? { texto: v, ts: 0 } : { texto: v.texto || "", ts: v.ts || 0 }; })(), sujo = false, tmr = null, taNotas = null, ultimoEnvio = 0;
+function enviar() { if (!gravarNota) return; clearTimeout(tmr); const env = { ...nota }; Promise.resolve(gravarNota({ texto: env.texto, ts: env.ts })).then(() => { if (nota.ts === env.ts) sujo = false; ultimoEnvio = env.ts; }).catch(() => {}); }
+// chamado a cada atualização dos dados: traz a versão mais nova da nuvem ou envia a local
+export function sincronizarNotas(doc, carregado) {
+  if (!gravarNota || sujo || !carregado) return;
+  if (!doc) { if (nota.texto.trim() && nota.ts !== ultimoEnvio) { if (!nota.ts) { nota.ts = Date.now(); LS.set("mf-notas", nota); } enviar(); } return; }
+  if ((doc.ts || 0) > nota.ts) { nota = { texto: doc.texto || "", ts: doc.ts }; LS.set("mf-notas", nota); if (taNotas && taNotas.value !== nota.texto) { taNotas.value = nota.texto; taNotas.dispatchEvent(new Event("flut-atualizada")); } }
+  else if ((doc.ts || 0) < nota.ts && nota.ts !== ultimoEnvio) enviar();
+}
+
+export function iniciarFlutuantes(opc = {}) {
+  gravarNota = opc.gravar || null;
   if (document.getElementById("flut")) return;
   const raiz = el(`<div id="flut"><div class="flb"><button type="button" data-w="notas" title="Bloco de notas" aria-label="Bloco de notas">📝</button><button type="button" data-w="calc" title="Calculadora" aria-label="Calculadora">🧮</button></div></div>`);
   document.body.append(raiz);
   const estado = LS.get("mf-flut", {}), salvar = () => LS.set("mf-flut", estado), wins = {};
   const defs = {
-    notas: { t: "📝 Bloco de notas", w: 300, h: 300, corpo: `<textarea class="fnota" placeholder="Anote aqui… (fica salvo neste aparelho)" spellcheck="true"></textarea><div class="fnb"><button type="button" data-n="copiar">Copiar</button><button type="button" data-n="limpar">Limpar</button><span class="fcont"></span></div>` },
+    notas: { t: "📝 Bloco de notas", w: 300, h: 300, corpo: `<textarea class="fnota" placeholder="Anote aqui… (sincroniza com seus outros aparelhos)" spellcheck="true"></textarea><div class="fnb"><button type="button" data-n="copiar">Copiar</button><button type="button" data-n="limpar">Limpar</button><span class="fcont"></span></div>` },
     calc: { t: "🧮 Calculadora", w: 264, h: 0, corpo: `<div class="fhist"></div><input class="fdisp" inputmode="none" autocomplete="off" placeholder="0" aria-label="Expressão"><div class="fkeys">${["C", "(", ")", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "0", ",", "⌫", "="].map(k => `<button type="button" class="${"÷×−+".includes(k) ? "op" : k === "=" ? "eq" : k === "C" || k === "⌫" ? "fn" : ""}" data-k="${k}">${k}</button>`).join("")}</div><div class="fnb"><button type="button" data-k="%">%</button><button type="button" data-n="copiarR">Copiar resultado</button></div>` }
   };
   function posicionar(w, id) { const p = estado[id] || {}, r = w.getBoundingClientRect(); let x = p.x, y = p.y; if (x == null) { x = innerWidth - r.width - 16; y = id === "calc" ? 70 : innerHeight - r.height - 100; if (id === "notas" && innerWidth >= 700) { x -= 276; y = 70; } } w.style.left = clamp(x, 4, Math.max(4, innerWidth - r.width - 4)) + "px"; w.style.top = clamp(y, 4, Math.max(4, innerHeight - r.height - 4)) + "px"; }
@@ -29,7 +41,8 @@ export function iniciarFlutuantes() {
     const d = defs[id], fix = !!estado[id]?.fixa;
     const w = el(`<section class="fwin ${fix ? "fixa" : ""}" data-id="${id}" style="width:${d.w}px${d.h ? ";height:" + d.h + "px" : ""}"><header><span class="ft">${d.t}</span><button type="button" class="fpin ${fix ? "on" : ""}" data-n="fixar" title="${fix ? "Fixada neste local — toque para soltar" : "Fixar neste local"}">${fix ? "📌 Fixada" : "📍 Fixar"}</button><button type="button" data-n="fechar" aria-label="Fechar">✕</button></header><div class="fcorpo">${d.corpo}</div></section>`);
     raiz.append(w); wins[id] = w; estado[id] = { ...estado[id], aberta: true }; salvar(); posicionar(w, id); marcar(); ligar(w, id);
-    if (id === "notas") { const ta = w.querySelector("textarea"); ta.value = LS.get("mf-notas", ""); const c = () => { w.querySelector(".fcont").textContent = ta.value.length + " caracteres"; }; c(); ta.oninput = () => { LS.set("mf-notas", ta.value); c(); }; }
+    if (id === "notas") { const ta = w.querySelector("textarea"); taNotas = ta; ta.value = nota.texto; const c = () => { w.querySelector(".fcont").textContent = ta.value.length + " caracteres" + (gravarNota ? (sujo ? " · salvando…" : " · sincronizado") : ""); }; c();
+      ta.oninput = () => { nota = { texto: ta.value, ts: Date.now() }; sujo = true; LS.set("mf-notas", nota); c(); clearTimeout(tmr); tmr = setTimeout(enviar, 700); }; ta.addEventListener("flut-atualizada", c); setInterval(() => { if (!w.isConnected) return; c(); }, 1500); }
     else w.querySelector(".fdisp").focus({ preventScroll: true });
   }
   function marcar() { raiz.querySelectorAll(".flb button").forEach(b => b.classList.toggle("on", !!wins[b.dataset.w])); }
