@@ -587,7 +587,7 @@ function planoOrg() {
   }
   const novoNome = id => { const r = renomear.find(x => x.c.id === id); return r ? r.nome : by("categorias", id)?.nome; };
   for (const c of cs) {
-    const alvoDe = CATALOGO.find(a => a[3] === c.tipo && a[0] === novoNome(c.id) && alvoId[a[3] + "|" + a[0]] === c.id);
+    const alvoDe = CATALOGO.find(a => a[3] === c.tipo && nrm(a[0]) === nrm(novoNome(c.id)) && alvoId[a[3] + "|" + a[0]] === c.id);
     if (alvoDe) continue;
     const r = REGRAS_ORG.find(r => r[0] === c.tipo && r[1].map(nrm).includes(nrm(c.nome)));
     if (r) { mapa[c.id] = r; juntar.push({ de: c, para: r[2] }); } else { const d = c.tipo === "receita" ? "Outras receitas" : "Outros"; mapa[c.id] = [c.tipo, [], d, c.nome]; juntar.push({ de: c, para: d }); }
