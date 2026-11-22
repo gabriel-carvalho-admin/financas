@@ -282,3 +282,5 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .fkeys .op{background:color-mix(in srgb,var(--pri) 14%,var(--bg));color:var(--pri)}.fkeys .eq{background:var(--pri);color:#fff;border-color:var(--pri)}.fkeys .fn{color:#d9483b}
 
 .top .hb[data-w]{font-size:19px}.top .hb[data-w].on{background:color-mix(in srgb,var(--pri) 16%,transparent)}
+
+.orgl{margin:4px 0 8px;padding-left:18px;font-size:14px}.orgl li{margin:2px 0}

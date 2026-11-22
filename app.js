@@ -537,9 +537,118 @@ V.relatorios = () => {
     <div class="card"><h3>${S.aba === "despesa" ? "Despesas" : "Receitas"} por categoria</h3>${donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(total(arr)))}</div>
   </div>`;
 };
+/* ---------- organização das categorias (catálogo padrão, junção das antigas e subgrupos sugeridos) ---------- */
+const nrm = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+const CATALOGO = [
+  ["Mercado", "🛒", "#f29a38", "despesa", ["Supermercado e atacado", "Hortifrúti", "Padaria", "Bebidas"]],
+  ["Refeições", "🍽️", "#e0564a", "despesa", ["Restaurantes", "Fast food", "Sorveterias e lanches", "Delivery"]],
+  ["Casa", "🏠", "#8d6e63", "despesa", ["Limpeza", "Utensílios e cozinha", "Manutenção e reparos", "Móveis e decoração", "Eletrodomésticos", "Piscina e jardim"]],
+  ["Contas fixas", "📅", "#4a9be0", "despesa", ["Energia", "Água", "Internet", "Telefone e plano", "Gás"]],
+  ["Transporte", "🚗", "#5b6ee0", "despesa", ["Combustível", "Estacionamento", "Manutenção do carro", "Manutenção da moto", "Seguro, IPVA e taxas", "Aplicativo e passagem"]],
+  ["Cuidados pessoais", "🧴", "#ec6fa0", "despesa", ["Higiene e perfumaria", "Protetor solar e pele", "Cabelo e barbearia", "Roupas e calçados"]],
+  ["Saúde", "💊", "#2f8f83", "despesa", ["Farmácia", "Consultas e exames", "Óculos e dentista", "Academia"]],
+  ["Eletrônicos e tecnologia", "💻", "#607d8b", "despesa", ["Celular e acessórios", "Computador e periféricos", "Som e vídeo", "Assinaturas digitais"]],
+  ["Lazer e viagens", "🎮", "#9c6ade", "despesa", ["Passeios e eventos", "Passagens e hospedagem", "Jogos e hobbies"]],
+  ["Educação", "🎓", "#1f8a70", "despesa", ["Faculdade e mensalidades", "Cursos", "Livros e materiais"]],
+  ["Compras online", "🛍️", "#ff8a65", "despesa", ["Mercado Livre", "Shopee", "Outros marketplaces"]],
+  ["Família e presentes", "🎁", "#d46ab0", "despesa", ["Presentes", "Doações", "Ajuda a familiares"]],
+  ["Empréstimos e dívidas", "🤝", "#5b6ee0", "despesa", ["Empréstimo concedido", "Pagamento de empréstimo", "Parcelamento de dívida"]],
+  ["Taxas e bancos", "🏦", "#78909c", "despesa", ["Anuidade de cartão", "IOF e juros", "Rotativo", "Tarifas"]],
+  ["Negócios", "💼", "#455a64", "despesa", ["Insumos e mercadorias", "Embalagens", "Equipamentos", "Funcionários e diárias", "Aluguel e estrutura", "Marketing", "Impostos e taxas do negócio"]],
+  ["Outros", "📦", "#90a4ae", "despesa", ["Sem classificação"]],
+  ["Salário e retiradas", "💼", "#2e9e5b", "receita", ["Salário", "Retiradas"]],
+  ["Dilcar Eventos", "🏢", "#5b6ee0", "receita", ["Espaço", "Aluguel", "Serviços"]],
+  ["Suco Verde", "🥤", "#43a047", "receita", ["Vendas"]],
+  ["Frutaí", "🍉", "#ef6c00", "receita", ["Vendas"]],
+  ["Reembolsos", "↩️", "#26a69a", "receita", []],
+  ["Outras receitas", "➕", "#7e8ce0", "receita", []]
+];
+// [tipo, categorias antigas, categoria nova, subgrupo (se o lançamento não tiver), regras por subgrupo existente]
+const REGRAS_ORG = [
+  ["despesa", ["educação"], "Educação"], ["despesa", ["emprestimo", "empréstimo"], "Empréstimos e dívidas"],
+  ["despesa", ["mercado", "alimentação"], "Mercado"], ["despesa", ["supermercado (suco verde)"], "Mercado", "Supermercado e atacado"],
+  ["despesa", ["restaurante"], "Refeições", "Restaurantes"], ["despesa", ["fastfood", "fast food"], "Refeições", "Fast food"], ["despesa", ["sorveteria"], "Refeições", "Sorveterias e lanches"],
+  ["despesa", ["carro", "moto"], "Transporte"], ["despesa", ["anuidade"], "Taxas e bancos", "Anuidade de cartão"], ["despesa", ["marketplace"], "Compras online"],
+  ["despesa", ["moradia"], "Casa"], ["despesa", ["manutenção"], "Casa", "Manutenção e reparos", [[/eletrodom/i, "Eletrodomésticos"]]],
+  ["despesa", ["academia"], "Saúde", "Academia"], ["despesa", ["doação"], "Família e presentes", "Doações"],
+  ["despesa", ["família"], "Família e presentes", "", [[/apple|google|youtube|assinatura/i, "Assinaturas digitais", "Eletrônicos e tecnologia"]]],
+  ["despesa", ["lazer"], "Lazer e viagens"], ["despesa", ["roupas"], "Cuidados pessoais", "Roupas e calçados"], ["despesa", ["serviço de assinatura"], "Eletrônicos e tecnologia", "Assinaturas digitais"],
+  ["receita", ["salário"], "Salário e retiradas", "Salário"], ["receita", ["suco verde"], "Suco Verde", "Vendas"]
+];
+// subgrupos já usados em "Contas fixas" que passam a seguir o padrão
+const SUBS_FIXAS = [[/equatorial|energia/i, "Energia"], [/[aá]guas? de|^[aá]gua/i, "Água"], [/plano|tim|telefone/i, "Telefone e plano"], [/piscin/i, "Piscina e jardim", "Casa"]];
+const subsMais = (catId, arr) => [...new Set([...(by("config", "catalogo")?.subs?.[catId] || []), ...arr])].sort((a, b) => a.localeCompare(b));
+function planoOrg() {
+  const cs = S.data.categorias, alvoId = {}, criar = [], renomear = [], juntar = [], mantidas = [], mapa = {};
+  for (const [nome, icone, cor, tipo] of CATALOGO) {
+    let sv = cs.find(c => c.tipo === tipo && nrm(c.nome) === nrm(nome));
+    if (!sv) { const r = REGRAS_ORG.find(r => r[0] === tipo && r[2] === nome); sv = r && cs.find(c => c.tipo === tipo && r[1].map(nrm).includes(nrm(c.nome))); if (sv) renomear.push({ c: sv, nome }); }
+    if (sv) alvoId[tipo + "|" + nome] = sv.id; else { alvoId[tipo + "|" + nome] = null; criar.push({ nome, icone, cor, tipo }); }
+  }
+  const novoNome = id => { const r = renomear.find(x => x.c.id === id); return r ? r.nome : by("categorias", id)?.nome; };
+  for (const c of cs) {
+    const alvoDe = CATALOGO.find(a => a[3] === c.tipo && a[0] === novoNome(c.id) && alvoId[a[3] + "|" + a[0]] === c.id);
+    if (alvoDe) continue;
+    const r = REGRAS_ORG.find(r => r[0] === c.tipo && r[1].map(nrm).includes(nrm(c.nome)));
+    if (r) { mapa[c.id] = r; juntar.push({ de: c, para: r[2] }); } else mantidas.push(c);
+  }
+  // lançamentos e contas mensais afetados
+  const mexe = x => { const cOld = by("categorias", x.categoriaId); if (!cOld) return null; let cat = x.categoriaId, sub = x.subgrupo || "", novaCat = null;
+    const r = mapa[x.categoriaId]; if (r) { novaCat = r[2]; if (!sub && r[3]) sub = r[3]; for (const [re, s, c2] of r[4] || []) if (re.test(x.subgrupo || "")) { sub = s; if (c2) novaCat = c2; break; } }
+    else if (nrm(novoNome(cOld.id)) === "contas fixas" && x.subgrupo) for (const [re, s, c2] of SUBS_FIXAS) if (re.test(x.subgrupo)) { sub = s; if (c2) novaCat = c2; break; }
+    if (!novaCat && sub === (x.subgrupo || "")) return null; return { x, novaCat, sub }; };
+  const ls = S.data.lancamentos.map(mexe).filter(Boolean), fx = S.data.fixas.map(mexe).filter(Boolean), orc = S.data.orcamentos.filter(o => mapa[o.categoriaId]);
+  const cont = {}; ls.forEach(m => { const c = by("categorias", m.x.categoriaId); if (m.novaCat) cont[c.id] = (cont[c.id] || 0) + 1; });
+  return { alvoId, criar, renomear, juntar, mantidas, mapa, ls, fx, orc, cont, nSubs: ls.filter(m => !m.novaCat).length + fx.filter(m => !m.novaCat).length };
+}
+function previaOrg() {
+  const p = planoOrg(), li = t => `<li>${t}</li>`, tem = by("config", "backup_organizar");
+  $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:560px"><h2>Organizar categorias</h2>
+    <div class="mut" style="margin-bottom:10px">Veja o que será feito. Nada é apagado de verdade: o app guarda uma cópia e você pode desfazer depois.</div>
+    ${p.criar.length ? `<div class="day">Categorias novas (${p.criar.length})</div><ul class="orgl">${p.criar.map(c => li(`${c.icone} ${esc(c.nome)} <small class="mut">${c.tipo}</small>`)).join("")}</ul>` : ""}
+    ${p.renomear.length ? `<div class="day">Renomeadas</div><ul class="orgl">${p.renomear.map(r => li(`${esc(r.c.nome)} → <b>${esc(r.nome)}</b>`)).join("")}</ul>` : ""}
+    ${p.juntar.length ? `<div class="day">Juntadas em outra categoria</div><ul class="orgl">${p.juntar.map(j => li(`${esc(j.de.nome)} → <b>${esc(j.para)}</b> <small class="mut">(${p.cont[j.de.id] || 0} lançamentos)</small>`)).join("")}</ul>` : ""}
+    ${p.nSubs ? `<div class="day">Subgrupos padronizados</div><ul class="orgl">${li(`${p.nSubs} lançamentos/contas mensais (ex.: Equatorial → Energia, Águas de Teresina → Água)`)}</ul>` : ""}
+    ${p.mantidas.length ? `<div class="day">Ficam como estão (sem equivalente no padrão)</div><div class="mut">${p.mantidas.map(c => esc(c.nome)).join(", ")}</div>` : ""}
+    <div class="day">Subgrupos sugeridos</div><div class="mut">Cada categoria passa a sugerir os subgrupos do padrão (ex.: Mercado › Hortifrúti, Padaria…) ao lançar.</div>
+    <div class="acts">${tem ? '<button class="btn ghost" data-act="orgDesfazer">Desfazer a última</button>' : ""}<span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Cancelar</button><button class="btn" data-act="orgAplicar" ${p.criar.length || p.renomear.length || p.juntar.length || p.nSubs ? "" : "disabled"}>Aplicar organização</button></div></div></div>`;
+}
+const emLotes = async (arr, fn) => { for (let i = 0; i < arr.length; i += 25) await Promise.all(arr.slice(i, i + 25).map(fn)); };
+async function aplicarOrg() {
+  const p = planoOrg(), antes = S.data.categorias.map(c => ({ ...c })), id2 = {};
+  const bk = { quando: new Date().toISOString(), categorias: antes, lanc: {}, fixas: {}, orc: {}, criadas: [] };
+  try {
+    for (const c of p.criar) { const nid = await store.add("categorias", { nome: c.nome, icone: c.icone, cor: c.cor, tipo: c.tipo }); p.alvoId[c.tipo + "|" + c.nome] = nid; bk.criadas.push(nid); }
+    for (const r of p.renomear) await store.set("categorias", r.c.id, { ...r.c, nome: r.nome });
+    const idDe = (tipo, nome) => p.alvoId[tipo + "|" + nome];
+    const tipoDe = id => by("categorias", id)?.tipo;
+    const dest = m => m.novaCat ? idDe(tipoDe(m.x.categoriaId) || "despesa", m.novaCat) : m.x.categoriaId;
+    p.ls.forEach(m => bk.lanc[m.x.id] = [m.x.categoriaId, m.x.subgrupo || ""]); p.fx.forEach(m => bk.fixas[m.x.id] = [m.x.categoriaId, m.x.subgrupo || ""]); p.orc.forEach(o => bk.orc[o.id] = o.categoriaId);
+    await store.set("config", "backup_organizar", JSON.parse(JSON.stringify(bk)));
+    await emLotes(p.ls, m => store.set("lancamentos", m.x.id, { ...m.x, categoriaId: dest(m), subgrupo: m.sub }));
+    await emLotes(p.fx, m => store.set("fixas", m.x.id, { ...m.x, categoriaId: dest(m), subgrupo: m.sub }));
+    await emLotes(p.orc, o => store.set("orcamentos", o.id, { ...o, categoriaId: idDe(tipoDe(o.categoriaId) || "despesa", p.mapa[o.categoriaId][2]) }));
+    const subs = {}; for (const [nome, , , tipo, ss] of CATALOGO) { const id = idDe(tipo, nome); if (id && ss.length) subs[id] = ss; }
+    await store.set("config", "catalogo", { subs });
+    const sobra = p.juntar.map(j => j.de.id).filter(id => !S.data.lancamentos.some(l => l.categoriaId === id && !p.ls.some(m => m.x.id === l.id)) && !S.data.fixas.some(f => f.categoriaId === id && !p.fx.some(m => m.x.id === f.id)));
+    if (sobra.length) await store.del("categorias", sobra);
+    $("#modal").innerHTML = ""; toast(`Categorias organizadas: ${p.criar.length} novas, ${p.juntar.length} juntadas, ${p.ls.length} lançamentos ajustados.`);
+  } catch (e) { toast("Não foi possível concluir: " + (e.code || e.message) + ". Use 'Desfazer a última' se algo ficou pela metade."); }
+}
+async function desfazerOrg() {
+  const bk = by("config", "backup_organizar"); if (!bk) return toast("Não há organização para desfazer.");
+  try {
+    await emLotes(bk.categorias, c => store.set("categorias", c.id, c));
+    await emLotes(Object.entries(bk.lanc), ([id, [c, s]]) => { const l = by("lancamentos", id); return l ? store.set("lancamentos", id, { ...l, categoriaId: c, subgrupo: s }) : null; });
+    await emLotes(Object.entries(bk.fixas), ([id, [c, s]]) => { const f = by("fixas", id); return f ? store.set("fixas", id, { ...f, categoriaId: c, subgrupo: s }) : null; });
+    await emLotes(Object.entries(bk.orc), ([id, c]) => { const o = by("orcamentos", id); return o ? store.set("orcamentos", id, { ...o, categoriaId: c }) : null; });
+    const usadas = new Set(bk.categorias.map(c => c.id)), novas = bk.criadas.filter(id => !usadas.has(id)); if (novas.length) await store.del("categorias", novas);
+    await store.del("config", "backup_organizar"); $("#modal").innerHTML = ""; toast("Organização desfeita.");
+  } catch (e) { toast("Não foi possível desfazer: " + (e.code || e.message)); }
+}
 V.categorias = () => {
   const bloco = (t, nome) => `<div class="card"><h3>${nome}</h3>${S.data.categorias.filter(c => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome)).map(c => `<div class="row" data-act="editCat" data-id="${c.id}">${av(c.icone, c.cor)}<div class="tx">${esc(c.nome)}</div></div>`).join("") || '<div class="empty">Nenhuma.</div>'}</div>`;
-  return `<div class="tools"><h2 style="flex:1">Categorias</h2><button class="btn" data-act="editCat">Nova categoria</button></div>
+  return `<div class="tools"><h2 style="flex:1">Categorias</h2><button class="btn ghost" data-act="orgPrevia">✨ Organizar categorias</button><button class="btn" data-act="editCat">Nova categoria</button></div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">${bloco("despesa", "Despesas")}${bloco("receita", "Receitas")}</div>`;
 };
 /* ---------- Energia (Equatorial + solar) ---------- */
@@ -935,7 +1044,7 @@ function formLanc(orig, cartaoId, pessoaId, dataPre, veiculoId) {
       { k: "tipo", type: "seg", options: [["despesa", "Despesa"], ["receita", "Receita"], ["transferencia", "Transferência"]], when: () => !ed },
       { k: "descricao", label: "Descrição" }, { k: "valor", label: "Valor (R$)", type: "money" }, { k: "data", label: "Data", type: "date" },
       { k: "categoriaId", label: "Categoria (grupo)", type: "select", redraw: true, options: v => optCats(v.tipo), when: v => v.tipo !== "transferencia" && !o.reembolso },
-      { k: "subgrupo", label: "Subgrupo (opcional — ex.: Gasolina, Farmácia)", list: v => [...new Set(S.data.lancamentos.filter(l => l.subgrupo && l.categoriaId === v.categoriaId).map(l => l.subgrupo))].sort((a, b) => a.localeCompare(b)), when: v => v.tipo !== "transferencia" && !o.reembolso },
+      { k: "subgrupo", label: "Subgrupo (opcional — ex.: Gasolina, Farmácia)", list: v => subsMais(v.categoriaId, [...new Set(S.data.lancamentos.filter(l => l.subgrupo && l.categoriaId === v.categoriaId).map(l => l.subgrupo))].sort((a, b) => a.localeCompare(b))), when: v => v.tipo !== "transferencia" && !o.reembolso },
       { k: "origem", label: "Pagar com", type: "select", redraw: true, options: () => [...optContas().map(([k, n]) => ["c:" + k, n]), ...S.data.cartoes.map(c => ["k:" + c.id, "💳 " + c.nome])], when: v => v.tipo === "despesa" },
       { k: "pessoaId", label: "Gasto de quem (pessoa ou empresa)", type: "select", options: () => [["", "Eu"], ...[...S.data.pessoas].sort((a, b) => (grupoDe(a) === "empresas") - (grupoDe(b) === "empresas") || a.nome.localeCompare(b.nome)).map(p => [p.id, (grupoDe(p) === "empresas" ? "🏢 " : "") + p.nome])], when: v => v.tipo === "despesa" && S.data.pessoas.length > 0 },
       { k: "veiculoId", label: "Veículo (opcional — combustível, manutenção…)", type: "select", redraw: true, options: () => [["", "— nenhum —"], ...[...S.data.veiculos].sort((a, b) => a.nome.localeCompare(b.nome)).map(x => [x.id, (VEIC_ICO[x.tipo] || "🚗") + " " + x.nome])], when: v => v.tipo === "despesa" && !o.emprestimo && S.data.veiculos.length > 0 },
@@ -1007,7 +1116,7 @@ const formVeiculo = crud("veiculos", "oveículo", [{ k: "nome", label: "Nome (ex
   () => ({ nome: "", tipo: "carro", dono: "", tanque: "", placa: "", cor: "#3b7ddd" }), { in: o => ({ dono: "", placa: "", ...o, tanque: o.tanque ? moneyIn(o.tanque) : "" }), out: v => v.nome.trim() ? { nome: v.nome.trim(), tipo: v.tipo || "carro", dono: v.dono || "", placa: (v.placa || "").trim().toUpperCase(), tanque: parseMoney(v.tanque) > 0 ? r2(parseMoney(v.tanque)) : "", cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.veiculoId === o.id) ? "Este veículo tem despesas. Troque o veículo ou exclua as despesas antes." : "");
 const formFixa = crud("fixas", "aconta mensal", [{ k: "nome", label: "Nome (ex.: Água, Luz)" }, { k: "dia", label: "Dia em que costuma vencer", type: "number" }, { k: "categoriaId", label: "Grupo (categoria)", type: "select", redraw: true, options: () => optCats("despesa") },
-  { k: "subgrupo", label: "Subgrupo (opcional — ex.: Energia, Internet)", list: v => [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b)) },
+  { k: "subgrupo", label: "Subgrupo (opcional — ex.: Energia, Internet)", list: v => subsMais(v.categoriaId, [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b))) },
   { k: "contaId", label: "Conta em que costuma pagar", type: "select", options: optContas }],
   () => ({ nome: "", dia: 10 }), { in: o => o, out: v => v.nome.trim() ? { nome: v.nome.trim(), dia: Math.max(1, Math.min(31, Math.floor(Number(v.dia) || 10))), categoriaId: v.categoriaId || "", subgrupo: (v.subgrupo || "").trim(), contaId: v.contaId || "" } : (toast("Informe o nome."), null) },
   null, (o, d) => Promise.all(S.data.lancamentos.filter(l => l.fixaId === o.id && ((l.categoriaId || "") !== d.categoriaId || (l.subgrupo || "") !== d.subgrupo)).map(l => store.set("lancamentos", l.id, { ...l, categoriaId: d.categoriaId, subgrupo: d.subgrupo }))));
@@ -1019,7 +1128,7 @@ function formLancarFixa(id) {
     fields: [{ k: "valor", label: "Valor deste mês (R$)", type: "money" }, { k: "vencimento", label: "Data de vencimento", type: "date" }, { k: "paga", label: "Já paguei", type: "check", redraw: true },
       { k: "dataPag", label: "Data do pagamento", type: "date", when: v => v.paga }, { k: "contaId", label: "Conta", type: "select", options: optContas },
       { k: "titulo", type: "titulo", label: "Grupo e subgrupo" }, { k: "categoriaId", label: "Grupo (categoria)", type: "select", redraw: true, options: () => optCats("despesa") },
-      { k: "subgrupo", label: "Subgrupo (opcional)", list: v => [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b)) },
+      { k: "subgrupo", label: "Subgrupo (opcional)", list: v => subsMais(v.categoriaId, [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b))) },
       { k: "todos", label: "Aplicar a esta conta mensal e a todos os meses já lançados", type: "check" }],
     onSave: async v => { const valor = parseMoney(v.valor); if (valor <= 0 || !v.vencimento) { toast("Informe o valor e o vencimento."); return false; } if (v.paga && !v.dataPag) { toast("Informe a data do pagamento."); return false; }
       const d = { ...(l || {}), tipo: "despesa", descricao: f.nome, valor, vencimento: v.vencimento, data: v.paga ? v.dataPag : v.vencimento, efetivada: !!v.paga, categoriaId: v.categoriaId || "", subgrupo: (v.subgrupo || "").trim(), contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: l?.pessoaId || "", recorrencia: "fixa", fixaId: f.id, mesRef: S.mes };
@@ -1096,7 +1205,7 @@ const A = {
   selAplicar: () => { const ls = [...S.sel].map(i => by("lancamentos", i)).filter(Boolean); if (!ls.length) return; const tipos = new Set(ls.map(l => l.tipo));
     openForm({ title: `Alterar ${ls.length} ${ls.length === 1 ? "lançamento" : "lançamentos"}`, values: { categoriaId: "", subgrupo: "", veiculoId: "", limpar: false },
       fields: [{ k: "categoriaId", label: "Novo grupo (categoria)", type: "select", options: () => [["", "— manter o grupo atual —"], ...S.data.categorias.filter(c => tipos.size > 1 || tipos.has(c.tipo)).sort((a, b) => a.nome.localeCompare(b.nome)).map(c => [c.id, `${c.icone} ${c.nome}${tipos.size > 1 ? " (" + c.tipo + ")" : ""}`])] },
-        { k: "subgrupo", label: "Novo subgrupo (vazio = manter o atual)", list: v => [...new Set(S.data.lancamentos.filter(l => l.subgrupo && (!v.categoriaId || l.categoriaId === v.categoriaId)).map(l => l.subgrupo))].sort((a, b) => a.localeCompare(b)) },
+        { k: "subgrupo", label: "Novo subgrupo (vazio = manter o atual)", list: v => subsMais(v.categoriaId, [...new Set(S.data.lancamentos.filter(l => l.subgrupo && (!v.categoriaId || l.categoriaId === v.categoriaId)).map(l => l.subgrupo))].sort((a, b) => a.localeCompare(b))) },
         ...(S.data.veiculos.length && !ls.some(l => l.tipo !== "despesa") ? [{ k: "veiculoId", label: "Veículo", type: "select", options: () => [["", "— manter —"], ["__nenhum", "(tirar o veículo)"], ...S.data.veiculos.map(x => [x.id, x.nome])] }] : []),
         { k: "limpar", label: "Apagar o subgrupo dos selecionados", type: "check" }],
       onSave: async v => { const sg = (v.subgrupo || "").trim(); if (!v.categoriaId && !sg && !v.limpar && !v.veiculoId) { toast("Escolha um grupo ou um subgrupo."); return false; }
@@ -1104,6 +1213,7 @@ const A = {
   editL: d => { const l = by("lancamentos", d.id); l?.emprestimo ? formEmprestimo(l.pessoaId, l.id) : formLanc(l); },
   emprestar: d => formEmprestimo(d.id),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
+  orgPrevia: () => previaOrg(), orgAplicar: () => aplicarOrg(), orgDesfazer: () => desfazerOrg(),
   editVeiculo: d => formVeiculo(d.id),
   verVeiculo: d => { const x = by("veiculos", d.id); if (!x) return; const ls = S.data.lancamentos.filter(l => l.tipo === "despesa" && l.veiculoId === x.id), ano = S.mes.slice(0, 4);
     const pre = `<div class="tri" style="font-size:14px;margin-bottom:10px"><div><small>No mês</small>${brl(total(ls.filter(l => ymOf(l.data) === S.mes)))}</div><div><small>No ano</small>${brl(total(ls.filter(l => l.data.slice(0, 4) === ano)))}</div><div><small>Total</small>${brl(total(ls))}</div></div>`;
