@@ -9,7 +9,7 @@ const firebaseConfig = {
   appId: "1:986463923028:web:741ca828cfba9bba4bf6c1"
 };
 const FB = "https://www.gstatic.com/firebasejs/10.14.1/";
-const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas", "fixas", "projetos", "movProjeto", "energia", "config", "objetivos"];
+const COLS = ["contas", "cartoes", "categorias", "lancamentos", "orcamentos", "pessoas", "fixas", "projetos", "movProjeto", "energia", "config", "objetivos", "veiculos"];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
 /* ---------- utilidades ---------- */
@@ -36,6 +36,7 @@ const I = {
   lancamentos: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
   contas: '<path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
   cartoes: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/>',
+  veiculos: '<path d="M5 16V11l1.800-4.500A2 2 0 0 1 8.700 5h6.600a2 2 0 0 1 1.900 1.500L19 11v5M3.500 16h17M5 16v2.500M19 16v2.500"/><circle cx="7.500" cy="13.500" r=".8"/><circle cx="16.500" cy="13.500" r=".8"/>',
   pessoas: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.900 1.900 6.500 5.500M16 4.800a3.500 3.500 0 0 1 0 6.400M18.500 14.800c1.700.800 2.700 2.500 3 5.200"/>',
   orcamentos: '<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
   relatorios: '<circle cx="12" cy="12" r="9"/><path d="M12 3v9h9"/>',
@@ -52,8 +53,8 @@ const I = {
 };
 const ico = n => `<svg class="ico" viewBox="0 0 24 24">${I[n]}</svg>`;
 const LOGO = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#3b7ddd" stroke-width="6"/><path d="M16 5a11 11 0 0 1 9.5 16.5" fill="none" stroke="#2e9e5b" stroke-width="6" stroke-linecap="round"/></svg>';
-const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["orcamentos", "Orçamentos"], ["objetivos", "Objetivos"], ["relatorios", "Relatórios"], ["projecao", "Projeção de saldo"], ["calendario", "Calendário"], ["categorias", "Categorias"], ["energia", "Energia"], ["dilcar", "Dilcar Eventos"], ["config", "Ajustes"]];
-const MENU = [["", ["inicio", "contas", "lancamentos", "cartoes", "pessoas"]], ["Planejar", ["orcamentos", "objetivos"]], ["Analisar", ["relatorios", "projecao", "calendario", "categorias"]], ["Outros", ["energia", "dilcar"]], ["", ["config"]]];
+const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["contas", "Contas"], ["cartoes", "Cartões"], ["pessoas", "Pessoas"], ["veiculos", "Veículos"], ["orcamentos", "Orçamentos"], ["objetivos", "Objetivos"], ["relatorios", "Relatórios"], ["projecao", "Projeção de saldo"], ["calendario", "Calendário"], ["categorias", "Categorias"], ["energia", "Energia"], ["dilcar", "Dilcar Eventos"], ["config", "Ajustes"]];
+const MENU = [["", ["inicio", "contas", "lancamentos", "cartoes", "pessoas", "veiculos"]], ["Planejar", ["orcamentos", "objetivos"]], ["Analisar", ["relatorios", "projecao", "calendario", "categorias"]], ["Outros", ["energia", "dilcar"]], ["", ["config"]]];
 const EMOJIS = ["🍽️","🛒","🏠","🚗","⛽","💊","🎓","🎮","👨‍👩‍👧","👕","✈️","📱","💡","🐶","🎁","💼","💰","🛍️","📅","🏋️","☕","🧾","📦","➕"];
 const GRUPOS_EV = ["Buffet", "Bebidas", "Decoração", "Equipe", "Som e luz", "Locação", "Transporte", "Outros"];
 const PALETA = ["#4a9be0", "#f5b335", "#e0564a", "#7e57c2", "#2f8f83", "#f29a38", "#3f51b5", "#26a69a", "#e57373", "#78909c"];
@@ -347,7 +348,7 @@ const sub = l => {
   if (l.tipo === "transferencia") return `${esc(onde || "?")} → ${esc(by("contas", l.contaDestinoId)?.nome || "?")}`;
   if (l.reembolso) return ["Pagamento recebido", onde].filter(Boolean).map(esc).join(" · ");
   if (l.emprestimo) return ["Empréstimo", l.vencimento ? "pagar até " + dataBR(l.vencimento) : "", onde, by("pessoas", l.pessoaId)?.nome].filter(Boolean).map(esc).join(" · ");
-  return [cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
+  return [cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.veiculoId ? "🚗 " + (by("veiculos", l.veiculoId)?.nome || "") : "", l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
 };
 const linha = (l, sel) => {
   const c = l.tipo === "transferencia" ? { icone: "⇄", cor: "#5b6ee0" } : l.reembolso ? { icone: "↩", cor: by("pessoas", l.pessoaId)?.cor || "#2e9e5b" } : cat(l.emprestimo ? "__emp" : l.categoriaId);
@@ -489,6 +490,22 @@ V.pessoas = () => {
   <div class="sum"><span>Meus gastos no mês: <b>${brl(total(meus))}</b></span><span>Gastos de pessoas e empresas no mês: <b>${brl(outros)}</b></span><span>Total a receber até ${mesNome}: <b class="neg">${brl(r2(ps.reduce((s0, p) => s0 + Math.max(0, contaPessoa(p.id).deve), 0)))}</b></span></div>
   <div class="sum">${ps.length ? "Total a cobrar (gastos + empréstimos), já pagou e ainda deve somam tudo desde o início até o mês selecionado. Arraste pelo botão ⠿ para mudar a pessoa de grupo ou de ordem." : ""}</div>
   ${ps.length ? "" : '<div class="sum">Cadastre as pessoas da casa e, em cada despesa, escolha de quem é o gasto.</div>'}`;
+};
+V.veiculos = () => {
+  const vs = [...S.data.veiculos].sort((a, b) => a.nome.localeCompare(b.nome)), mesNome = MESES[Number(S.mes.slice(5)) - 1].toLowerCase(), ano = S.mes.slice(0, 4);
+  const doV = id => S.data.lancamentos.filter(l => l.tipo === "despesa" && l.veiculoId === id), mesV = id => doV(id).filter(l => ymOf(l.data) === S.mes), anoV = id => doV(id).filter(l => l.data.slice(0, 4) === ano);
+  const semV = doMes("despesa").filter(l => !l.veiculoId && /carro|moto|combust|transporte|ve[ií]culo/i.test(cat(l.categoriaId).nome));
+  const card = x => { const m = mesV(x.id), t = total(m), rk = porCategoria(m).slice(0, 3), dono = x.dono ? by("pessoas", x.dono)?.nome : "";
+    return `<div class="card pcard" data-act="verVeiculo" data-id="${x.id}"><div class="hd">${av(VEIC_ICO[x.tipo] || "🚗", x.cor)}<div class="tx"><b>${esc(x.nome)}</b><small>${[x.placa, dono ? "de " + dono : ""].filter(Boolean).map(esc).join(" · ") || m.length + (m.length === 1 ? " despesa no mês" : " despesas no mês")}</small></div>
+      <button class="link mais" data-act="novo" data-veiculo="${x.id}" title="Nova despesa deste veículo">+</button><button data-act="editVeiculo" data-id="${x.id}" title="Editar">${ico("mais")}</button></div>
+      <div class="fat"><span>Gasto em ${mesNome}</span><b class="${t > 0 ? "neg" : ""}">${brl(t)}</b></div>
+      <div class="tri" style="margin-top:12px"><div><small>No ano (${ano})</small>${brl(total(anoV(x.id)))}</div><div><small>Despesas no mês</small>${m.length}</div><div><small>Desde o início</small>${brl(total(doV(x.id)))}</div></div>
+      ${rk.length ? `<div class="dash-l"></div><div class="sum" style="justify-content:flex-start;gap:8px 14px;margin:0">${rk.map(r => `<span>${esc(r.c.nome)} <b>${brl(r.v)}</b></span>`).join("")}</div>` : ""}</div>`; };
+  const tm = r2(vs.reduce((a, x) => a + total(mesV(x.id)), 0));
+  return `<div class="tools"><h2 style="flex:1">Veículos</h2><button class="btn" data-act="editVeiculo">Novo veículo</button></div>
+  <div class="grid cc">${vs.map(card).join("") || '<div class="empty">Cadastre seus veículos (ex.: Nissan March, Kombi, Palio). Em cada despesa você escolhe de qual veículo ela é.</div>'}</div>
+  ${vs.length ? `<div class="sum"><span>Gasto com veículos em ${mesNome}: <b>${brl(tm)}</b></span></div>` : ""}
+  ${semV.length ? `<div class="card" style="margin-top:12px"><b>${semV.length} ${semV.length === 1 ? "despesa de carro/combustível sem veículo" : "despesas de carro/combustível sem veículo"} em ${mesNome}</b> <span class="mut">(${brl(total(semV))})</span><div class="mut" style="margin-top:4px">Toque em <b>Lançamentos › Selecionar</b> para escolher o veículo de várias de uma vez.</div></div>` : ""}`;
 };
 function orcLista(curto) {
   const desp = doMes("despesa"), os = S.data.orcamentos;
@@ -902,11 +919,11 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
 const optContas = () => contasOrd().map(c => [c.id, c.nome]);
 const optCats = t => S.data.categorias.filter(c => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome)).map(c => [c.id, `${c.icone} ${c.nome}`]);
 
-function formLanc(orig, cartaoId, pessoaId, dataPre) {
+function formLanc(orig, cartaoId, pessoaId, dataPre, veiculoId) {
   if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
   const ed = !!orig, o = orig || {};
-  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", subgrupo: o.subgrupo || "", destino: o.contaDestinoId, efetivada: o.efetivada, parcelaEd: o.parcela || "", parcelasEd: o.parcelas || "", repetir: "variavel", parcelas: 2 }
-    : { tipo: "despesa", descricao: "", valor: "", data: dataPre || (ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`), origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", subgrupo: "", efetivada: true, repetir: "variavel", parcelas: 2, parcelaAtual: 1, valorTipo: "total" };
+  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", veiculoId: o.veiculoId || "", subgrupo: o.subgrupo || "", destino: o.contaDestinoId, efetivada: o.efetivada, parcelaEd: o.parcela || "", parcelasEd: o.parcelas || "", repetir: "variavel", parcelas: 2 }
+    : { tipo: "despesa", descricao: "", valor: "", data: dataPre || (ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`), origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", veiculoId: veiculoId || "", subgrupo: "", efetivada: true, repetir: "variavel", parcelas: 2, parcelaAtual: 1, valorTipo: "total" };
   openForm({
     title: ed ? "Editar lançamento" : "Novo lançamento", values,
     fields: [
@@ -916,6 +933,7 @@ function formLanc(orig, cartaoId, pessoaId, dataPre) {
       { k: "subgrupo", label: "Subgrupo (opcional — ex.: Gasolina, Farmácia)", list: v => [...new Set(S.data.lancamentos.filter(l => l.subgrupo && l.categoriaId === v.categoriaId).map(l => l.subgrupo))].sort((a, b) => a.localeCompare(b)), when: v => v.tipo !== "transferencia" && !o.reembolso },
       { k: "origem", label: "Pagar com", type: "select", redraw: true, options: () => [...optContas().map(([k, n]) => ["c:" + k, n]), ...S.data.cartoes.map(c => ["k:" + c.id, "💳 " + c.nome])], when: v => v.tipo === "despesa" },
       { k: "pessoaId", label: "Gasto de quem (pessoa ou empresa)", type: "select", options: () => [["", "Eu"], ...[...S.data.pessoas].sort((a, b) => (grupoDe(a) === "empresas") - (grupoDe(b) === "empresas") || a.nome.localeCompare(b.nome)).map(p => [p.id, (grupoDe(p) === "empresas" ? "🏢 " : "") + p.nome])], when: v => v.tipo === "despesa" && S.data.pessoas.length > 0 },
+      { k: "veiculoId", label: "Veículo (opcional — combustível, manutenção…)", type: "select", options: () => [["", "— nenhum —"], ...[...S.data.veiculos].sort((a, b) => a.nome.localeCompare(b.nome)).map(x => [x.id, (VEIC_ICO[x.tipo] || "🚗") + " " + x.nome])], when: v => v.tipo === "despesa" && !o.emprestimo && S.data.veiculos.length > 0 },
       { k: "origem", label: "Conta", type: "select", options: () => optContas().map(([k, n]) => ["c:" + k, n]), when: v => v.tipo === "receita" },
       { k: "origem", label: "Conta de origem", type: "select", options: () => optContas().map(([k, n]) => ["c:" + k, n]), when: v => v.tipo === "transferencia" },
       { k: "destino", label: "Conta de destino", type: "select", options: optContas, when: v => v.tipo === "transferencia" },
@@ -933,7 +951,7 @@ function formLanc(orig, cartaoId, pessoaId, dataPre) {
       const noCartao = v.tipo === "despesa" && v.origem.startsWith("k:"), id = v.origem.slice(2);
       if (v.tipo === "transferencia" && v.destino === id) { toast("Escolha contas diferentes."); return false; }
       const b = { tipo: v.tipo, descricao: v.descricao.trim() || (v.tipo === "transferencia" ? "Transferência" : cat(v.categoriaId).nome), valor, data: v.data,
-        categoriaId: v.tipo === "transferencia" || o.reembolso ? "" : v.categoriaId || "", subgrupo: v.tipo === "transferencia" || o.reembolso ? "" : (v.subgrupo || "").trim(), contaId: noCartao ? "" : id, cartaoId: noCartao ? id : "", contaDestinoId: v.tipo === "transferencia" ? v.destino : "", pessoaId: v.tipo === "despesa" ? v.pessoaId || "" : o.reembolso ? o.pessoaId : "", efetivada: noCartao ? true : !!v.efetivada };
+        categoriaId: v.tipo === "transferencia" || o.reembolso ? "" : v.categoriaId || "", subgrupo: v.tipo === "transferencia" || o.reembolso ? "" : (v.subgrupo || "").trim(), contaId: noCartao ? "" : id, cartaoId: noCartao ? id : "", contaDestinoId: v.tipo === "transferencia" ? v.destino : "", veiculoId: v.tipo === "despesa" && !o.emprestimo ? v.veiculoId || "" : "", pessoaId: v.tipo === "despesa" ? v.pessoaId || "" : o.reembolso ? o.pessoaId : "", efetivada: noCartao ? true : !!v.efetivada };
       if (ed) { const d = { ...o, ...b };
         if (v.tipo === "despesa" && !o.emprestimo) { const pt = Math.floor(Number(v.parcelasEd) || 0), pa = Math.floor(Number(v.parcelaEd) || 0);
           if (pt > 1 && pa >= 1 && pa <= pt) Object.assign(d, { parcela: pa, parcelas: pt, recorrencia: "parcelada" });
@@ -974,6 +992,11 @@ const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", opti
 const formPessoa = crud("pessoas", "apessoa", [{ k: "nome", label: "Nome" }, { k: "grupo", label: "Grupo", type: "select", options: GRUPOS }, { k: "cor", label: "Cor", type: "color" }],
   () => ({ nome: "", grupo: grupoNovo, cor: grupoNovo === "empresas" ? "#5b6ee0" : "#e0564a" }), { in: o => ({ ...o, grupo: grupoDe(o) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), grupo: v.grupo || "familia", cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.pessoaId === o.id) ? "Esta pessoa tem despesas. Troque ou exclua as despesas antes." : "");
+const VEIC_ICO = { carro: "🚗", moto: "🏍️", utilitario: "🚐", caminhao: "🚚", outro: "🚙" };
+const formVeiculo = crud("veiculos", "oveículo", [{ k: "nome", label: "Nome (ex.: Nissan March, Kombi, Palio)" }, { k: "tipo", label: "Tipo", type: "select", options: [["carro", "🚗 Carro"], ["moto", "🏍️ Moto"], ["utilitario", "🚐 Utilitário / Kombi"], ["caminhao", "🚚 Caminhão"], ["outro", "🚙 Outro"]] },
+  { k: "dono", label: "De quem é o veículo (opcional — ex.: Suco Verde)", type: "select", options: () => [["", "Eu"], ...S.data.pessoas.map(p => [p.id, p.nome])] }, { k: "placa", label: "Placa (opcional)" }, { k: "cor", label: "Cor", type: "color" }],
+  () => ({ nome: "", tipo: "carro", dono: "", placa: "", cor: "#3b7ddd" }), { in: o => ({ dono: "", placa: "", ...o }), out: v => v.nome.trim() ? { nome: v.nome.trim(), tipo: v.tipo || "carro", dono: v.dono || "", placa: (v.placa || "").trim().toUpperCase(), cor: v.cor } : (toast("Informe o nome."), null) },
+  o => S.data.lancamentos.some(l => l.veiculoId === o.id) ? "Este veículo tem despesas. Troque o veículo ou exclua as despesas antes." : "");
 const formFixa = crud("fixas", "aconta mensal", [{ k: "nome", label: "Nome (ex.: Água, Luz)" }, { k: "dia", label: "Dia em que costuma vencer", type: "number" }, { k: "categoriaId", label: "Grupo (categoria)", type: "select", redraw: true, options: () => optCats("despesa") },
   { k: "subgrupo", label: "Subgrupo (opcional — ex.: Energia, Internet)", list: v => [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b)) },
   { k: "contaId", label: "Conta em que costuma pagar", type: "select", options: optContas }],
@@ -1043,7 +1066,7 @@ const A = {
   per: d => { S.per = d.v; if (ymOf(S.ref) !== S.mes) S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; try { localStorage.setItem("mf-per", S.per); } catch (e) {} render(); },
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
-  novo: d => S.view === "objetivos" ? formObj() : S.view === "energia" ? formEnergia() : S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa),
+  novo: d => S.view === "objetivos" ? formObj() : S.view === "energia" ? formEnergia() : S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa, undefined, d.veiculo),
   det: d => detalhe(d), irCartao: d => { S.menu = false; S.view = "cartoes"; S.cartao = d.id; $("#main").scrollTop = 0; render(); },
   irMes: d => { S.mes = d.v; S.per = "mes"; S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; render(); },
   editObj: d => formObj(d.id),
@@ -1062,15 +1085,20 @@ const A = {
   selL: d => { S.sel.has(d.id) ? S.sel.delete(d.id) : S.sel.add(d.id); const y = $("#main").scrollTop; $("#lista").innerHTML = listaLanc(); $("#main").scrollTop = y; },
   selTodos: () => { const ids = lancFiltrados().filter(l => l.tipo !== "transferencia").map(l => l.id), tudo = ids.every(i => S.sel.has(i)); ids.forEach(i => tudo ? S.sel.delete(i) : S.sel.add(i)); $("#lista").innerHTML = listaLanc(); },
   selAplicar: () => { const ls = [...S.sel].map(i => by("lancamentos", i)).filter(Boolean); if (!ls.length) return; const tipos = new Set(ls.map(l => l.tipo));
-    openForm({ title: `Alterar ${ls.length} ${ls.length === 1 ? "lançamento" : "lançamentos"}`, values: { categoriaId: "", subgrupo: "", limpar: false },
+    openForm({ title: `Alterar ${ls.length} ${ls.length === 1 ? "lançamento" : "lançamentos"}`, values: { categoriaId: "", subgrupo: "", veiculoId: "", limpar: false },
       fields: [{ k: "categoriaId", label: "Novo grupo (categoria)", type: "select", options: () => [["", "— manter o grupo atual —"], ...S.data.categorias.filter(c => tipos.size > 1 || tipos.has(c.tipo)).sort((a, b) => a.nome.localeCompare(b.nome)).map(c => [c.id, `${c.icone} ${c.nome}${tipos.size > 1 ? " (" + c.tipo + ")" : ""}`])] },
         { k: "subgrupo", label: "Novo subgrupo (vazio = manter o atual)", list: v => [...new Set(S.data.lancamentos.filter(l => l.subgrupo && (!v.categoriaId || l.categoriaId === v.categoriaId)).map(l => l.subgrupo))].sort((a, b) => a.localeCompare(b)) },
+        ...(S.data.veiculos.length && !ls.some(l => l.tipo !== "despesa") ? [{ k: "veiculoId", label: "Veículo", type: "select", options: () => [["", "— manter —"], ["__nenhum", "(tirar o veículo)"], ...S.data.veiculos.map(x => [x.id, x.nome])] }] : []),
         { k: "limpar", label: "Apagar o subgrupo dos selecionados", type: "check" }],
-      onSave: async v => { const sg = (v.subgrupo || "").trim(); if (!v.categoriaId && !sg && !v.limpar) { toast("Escolha um grupo ou um subgrupo."); return false; }
-        await Promise.all(ls.map(l => store.set("lancamentos", l.id, { ...l, ...(v.categoriaId ? { categoriaId: v.categoriaId } : {}), ...(v.limpar ? { subgrupo: "" } : sg ? { subgrupo: sg } : {}) }))); S.sel = null; toast(`${ls.length} ${ls.length === 1 ? "lançamento alterado" : "lançamentos alterados"}.`); } }); },
+      onSave: async v => { const sg = (v.subgrupo || "").trim(); if (!v.categoriaId && !sg && !v.limpar && !v.veiculoId) { toast("Escolha um grupo ou um subgrupo."); return false; }
+        await Promise.all(ls.map(l => store.set("lancamentos", l.id, { ...l, ...(v.categoriaId ? { categoriaId: v.categoriaId } : {}), ...(v.limpar ? { subgrupo: "" } : sg ? { subgrupo: sg } : {}), ...(v.veiculoId ? { veiculoId: v.veiculoId === "__nenhum" ? "" : v.veiculoId } : {}) }))); S.sel = null; toast(`${ls.length} ${ls.length === 1 ? "lançamento alterado" : "lançamentos alterados"}.`); } }); },
   editL: d => { const l = by("lancamentos", d.id); l?.emprestimo ? formEmprestimo(l.pessoaId, l.id) : formLanc(l); },
   emprestar: d => formEmprestimo(d.id),
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
+  editVeiculo: d => formVeiculo(d.id),
+  verVeiculo: d => { const x = by("veiculos", d.id); if (!x) return; const ls = S.data.lancamentos.filter(l => l.tipo === "despesa" && l.veiculoId === x.id), ano = S.mes.slice(0, 4);
+    const pre = `<div class="tri" style="font-size:14px;margin-bottom:10px"><div><small>No mês</small>${brl(total(ls.filter(l => ymOf(l.data) === S.mes)))}</div><div><small>No ano</small>${brl(total(ls.filter(l => l.data.slice(0, 4) === ano)))}</div><div><small>Total</small>${brl(total(ls))}</div></div>`;
+    modalLista(`${VEIC_ICO[x.tipo] || "🚗"} ${esc(x.nome)} — todas as despesas`, ls, pre); },
   editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => { grupoNovo = d.grupo || "familia"; formPessoa(d.id); }, editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
   pagar: d => { const c = by("cartoes", d.id), valor = fatTotal(c.id, S.mes);
     openForm({ title: `Pagar fatura — ${brl(valor)}`, values: { contaId: c.contaId, data: hoje() }, fields: [{ k: "contaId", label: "De qual conta saiu o dinheiro", type: "select", options: optContas }, { k: "data", label: "Data do pagamento", type: "date" }],
@@ -1098,8 +1126,8 @@ const A = {
     inp.onchange = () => { const f = inp.files[0]; inp.remove(); if (f) importarArquivo(d.id, f).catch(err => toast("Não consegui ler o arquivo: " + err.message)); };
     document.getElementById("impfile")?.remove(); document.body.append(inp); inp.click(); },
   impTodas: () => { const algum = IMP.itens.some(x => x.on); IMP.itens.forEach(x => x.on = !algum && !x.credito); telaImportar(); },
-  impAplicar: () => { const cId = $("#impcat").value, sg = $("#impsub").value.trim(); if (!cId && !sg) return toast("Escolha uma categoria ou digite um subgrupo.");
-    IMP.itens.filter(x => x.on).forEach(x => { if (cId) x.categoriaId = cId; if (sg) x.subgrupo = sg; }); telaImportar(); },
+  impAplicar: () => { const cId = $("#impcat").value, sg = $("#impsub").value.trim(); const vId = $("#impvei")?.value || ""; if (!cId && !sg && !vId) return toast("Escolha uma categoria, um subgrupo ou um veículo.");
+    IMP.itens.filter(x => x.on).forEach(x => { if (cId) x.categoriaId = cId; if (sg) x.subgrupo = sg; if (vId) x.veiculoId = vId; }); telaImportar(); },
   impSalvar: async () => { const sel = IMP.itens.filter(x => x.on); if (!sel.length) return toast("Marque pelo menos uma compra.");
     const ruim = sel.find(x => { const a = String(x.pA ?? "").trim(), t = String(x.pT ?? "").trim(); return (a || t) && !(Number(t) > 1 && Number(a) >= 1 && Number(a) <= Number(t)); });
     if (ruim) return toast(`Confira a parcela de "${ruim.nome}": informe o número e o total (ex.: 3 de 10).`);
@@ -1107,7 +1135,7 @@ const A = {
       // No modo "tudo nesta fatura", a parcela 9/10 de uma compra de fevereiro é lançada na data da 9ª parcela, não na data da compra
       let data = naFatura && parc && p[1] > 1 ? addMesData(x.data, p[1] - 1) : x.data;
       if (naFatura && data > `${S.mes}-31`) data = x.data;
-      return { tipo: "despesa", descricao: x.nome.trim() || x.descOrig || "Compra no cartão", valor: x.valor, data, ...(data !== x.data ? { dataCompra: x.data } : {}), categoriaId: x.categoriaId || "", subgrupo: (x.subgrupo || "").trim(), contaId: "", cartaoId: IMP.cartaoId, contaDestinoId: "", pessoaId: x.pessoaId || "", efetivada: true,
+      return { tipo: "despesa", descricao: x.nome.trim() || x.descOrig || "Compra no cartão", valor: x.valor, data, ...(data !== x.data ? { dataCompra: x.data } : {}), categoriaId: x.categoriaId || "", subgrupo: (x.subgrupo || "").trim(), contaId: "", cartaoId: IMP.cartaoId, contaDestinoId: "", pessoaId: x.pessoaId || "", ...(x.veiculoId ? { veiculoId: x.veiculoId } : {}), efetivada: true,
         recorrencia: parc ? "parcelada" : "variavel", ...(parc ? { parcela: Number(p[1]), parcelas: Number(p[2]) } : {}), importId: x.importId, descOrig: x.descOrig, ...(naFatura ? { faturaRef: S.mes } : {}) }; });
     try { await store.addMany("lancamentos", novos); toast(`${novos.length} compras importadas (${brl(total(novos))}).`); IMP = null; $("#modal").innerHTML = ""; }
     catch (err) { toast("Não foi possível importar: " + (err.code || err.message)); } },
@@ -1192,14 +1220,14 @@ function telaImportar() {
   $("#modal").innerHTML = `<div class="ov"><div class="modal imp"><h2>Importar para ${esc(c.nome)}</h2>
     <div class="sum" style="justify-content:flex-start;margin:0 0 10px">${esc(IMP.arquivo)} · <b id="impres">${impResumo()}</b></div>
     <div class="f"><label for="impmodo">Em qual fatura lançar</label><select id="impmodo" data-impg="modo"><option value="fatura" ${IMP.modo === "fatura" ? "selected" : ""}>Tudo na fatura de ${mes} (mês selecionado no topo)</option><option value="data" ${IMP.modo === "data" ? "selected" : ""}>Pela data de cada compra e o dia de fechamento</option></select></div>
-    <div class="impbar"><span>Aplicar às marcadas:</span>${selCat("", 'id="impcat"')}<input id="impsub" type="text" placeholder="Subgrupo" autocomplete="off"><button class="btn ghost" data-act="impAplicar">Aplicar</button><button class="btn ghost" data-act="impTodas">Marcar / desmarcar todas</button></div>
+    <div class="impbar"><span>Aplicar às marcadas:</span>${selCat("", 'id="impcat"')}<input id="impsub" type="text" placeholder="Subgrupo" autocomplete="off">${S.data.veiculos.length ? `<select id="impvei"><option value="">🚗 Veículo…</option>${S.data.veiculos.map(v => `<option value="${v.id}">${esc(v.nome)}</option>`).join("")}</select>` : ""}<button class="btn ghost" data-act="impAplicar">Aplicar</button><button class="btn ghost" data-act="impTodas">Marcar / desmarcar todas</button></div>
     <div class="implist">${IMP.itens.map((x, i) => `<div class="impi ${x.on ? "" : "off"}" data-i="${i}">
       <label class="impck"><input type="checkbox" data-imp="on" ${x.on ? "checked" : ""}> <span>${dataBR(x.data)}</span></label><b class="${x.credito ? "pos" : "neg"}">${brl(x.valor)}</b>
       ${x.dup ? '<span class="tag" style="background:#f29a38">Já importada</span>' : x.talvez ? '<span class="tag" style="background:#f29a38" title="Já existe neste cartão uma compra com a mesma data e o mesmo valor">Possível repetida</span>' : x.credito ? '<span class="tag" style="background:#2e9e5b">Pagamento / estorno</span>' : "<span></span>"}
       <input class="impn" type="text" data-imp="nome" value="${esc(x.nome)}" title="Nome original: ${esc(x.descOrig)}" autocomplete="off">
       <div class="impp"><span>Parcela</span><input type="number" inputmode="numeric" min="1" data-imp="pA" value="${esc(x.pA)}" placeholder="nº" aria-label="Número da parcela"><span>de</span><input type="number" inputmode="numeric" min="1" data-imp="pT" value="${esc(x.pT)}" placeholder="total" aria-label="Total de parcelas">${x.obs ? `<small>${esc(x.obs)}</small>` : ""}</div>
       ${selCat(x.categoriaId, 'data-imp="categoriaId"')}<input type="text" data-imp="subgrupo" value="${esc(x.subgrupo)}" placeholder="Subgrupo" autocomplete="off">
-      ${ps.length ? `<select data-imp="pessoaId"><option value="">Eu</option>${ps.map(p => `<option value="${p.id}" ${p.id === x.pessoaId ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>` : ""}</div>`).join("")}</div>
+      ${ps.length ? `<select data-imp="pessoaId"><option value="">Eu</option>${ps.map(p => `<option value="${p.id}" ${p.id === x.pessoaId ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>` : ""}${S.data.veiculos.length ? `<select data-imp="veiculoId"><option value="">🚗 Sem veículo</option>${S.data.veiculos.map(v => `<option value="${v.id}" ${v.id === x.veiculoId ? "selected" : ""}>${esc(v.nome)}</option>`).join("")}</select>` : ""}</div>`).join("")}</div>
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Cancelar</button><button class="btn" data-act="impSalvar">Importar marcadas</button></div></div></div>`;
 }
 document.addEventListener("input", e => {
