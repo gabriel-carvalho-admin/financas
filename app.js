@@ -395,11 +395,18 @@ function paginaCartao(c) {
     ${st.paga ? `<div class="ft2"><span class="pos b">✓ Paga em ${dataBR(st.paga.data)}</span><span>com a conta <b>${esc(by("contas", st.paga.contaId)?.nome || "?")}</b> · ${brl(st.paga.valor)}</span><span class="sp"></span><button class="btn ghost" data-act="reabrir" data-id="${c.id}">Reabrir fatura</button></div>`
       : st.ft > 0 ? `<div class="ft2"><span class="${hoje() > st.venc ? "neg b" : "mut"}">${hoje() > st.venc ? "Fatura vencida e ainda não paga." : "Ainda não paga."}</span><span class="sp"></span><button class="btn" data-act="pagar" data-id="${c.id}">Registrar pagamento</button></div>` : '<div class="mut">Nenhum gasto nesta fatura.</div>'}</div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start">
-    <div class="card"><h3>Gastos por categoria</h3>${donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(st.ft))}</div>
+    <div class="card"><h3>Gastos por categoria</h3>${donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v, attr: `data-act="cartSub" data-card="${c.id}" data-id="${esc(r.id)}"` })), brl(st.ft))}</div>
     <div class="card"><h3>Maiores gastos</h3>${barras(maiores)}</div>
     <div class="card"><h3>Gastos da fatura <button class="link" data-act="novo" data-cartao="${c.id}">+ novo</button></h3>${it.map(l => `<div class="row" data-act="editL" data-id="${l.id}">${av(cat(l.categoriaId).icone, cat(l.categoriaId).cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${sub(l)}</small></div><b class="neg">${brl(l.valor)}</b></div>`).join("") || '<div class="empty">Nenhum gasto nesta fatura.</div>'}
       ${it.length ? `<div class="sum">${it.length} ${it.length === 1 ? "gasto" : "gastos"} · total <b class="neg">${brl(st.ft)}</b></div>` : ""}</div>
   </div>`;
+}
+const itensCartoes = (cid, ym = S.mes) => S.data.lancamentos.filter(l => l.cartaoId && (!cid || l.cartaoId === cid) && fatMes(l) === ym);
+function graficosCartoes(cid) {
+  const m = S.mes, it = itensCartoes(cid, m), tot = total(it), rk = porCategoria(it), cs = S.data.cartoes;
+  const porC = cs.map(c => ({ id: c.id, c: { nome: c.nome, cor: c.cor }, v: fatTotal(c.id, m) })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  porC.forEach(x => x.p = x.v / (tot || 1) * 100);
+  return { tot, porC, pizza: donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v, attr: `data-act="cartSub" data-card="${cid || ""}" data-id="${esc(r.id)}"` })), brl(tot)) };
 }
 V.cartoes = () => {
   const m = S.mes, cs = S.data.cartoes, aberto = S.cartao && by("cartoes", S.cartao);
@@ -419,7 +426,9 @@ V.cartoes = () => {
   }).join("");
   const disp = r2(cs.reduce((s, c) => s + (c.limite || 0) - emAberto(c), 0)), fat = r2(cs.reduce((s, c) => s + fatTotal(c.id, m), 0));
   return `<div class="tools"><h2 style="flex:1">Cartões</h2><button class="btn" data-act="editCartao">Novo cartão</button></div>
-  ${cs.length ? `<div class="grid cc">${cards}</div><div class="sum"><span>Limite disponível: <b>${brl(disp)}</b></span><span>Total de faturas no mês: <b>${brl(fat)}</b></span></div><div class="sum">Toque em um cartão para ver os gastos, os gráficos e registrar o pagamento da fatura.</div>` : '<div class="card empty">Nenhum cartão cadastrado.</div>'}`;
+  ${cs.length ? `<div class="grid cc">${cards}</div><div class="sum"><span>Limite disponível: <b>${brl(disp)}</b></span><span>Total de faturas no mês: <b>${brl(fat)}</b></span></div>${(() => { const g = graficosCartoes(""); return `<div class="stats" style="margin:14px 0">${statBox("#d9483b", "💳", g.tot, "Gasto no cartão de crédito em " + MESES[Number(m.slice(5)) - 1].toLowerCase())}</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start"><div class="card"><h3>Gastos por cartão</h3>${g.porC.length ? barras(g.porC) : '<div class="empty">Sem gastos nas faturas deste mês.</div>'}</div>
+  <div class="card"><h3>Gastos por categoria <span class="mut" style="font-weight:400;font-size:12px">toque para ver as subcategorias</span></h3>${g.pizza}</div></div>`; })()}<div class="sum">Toque em um cartão para ver os gastos, os gráficos e registrar o pagamento da fatura.</div>` : '<div class="card empty">Nenhum cartão cadastrado.</div>'}`;
 };
 
 const lancFixa = (f, ym = S.mes) => S.data.lancamentos.find(l => l.fixaId === f.id && l.mesRef === ym);
@@ -1185,6 +1194,13 @@ const A = {
   filtro: d => { S.filtro = d.v; render(); },
   aba: d => { S.aba = d.v; render(); },
   novo: d => S.view === "objetivos" ? formObj() : S.view === "energia" ? formEnergia() : S.view === "dilcar" && !d.cartao && !d.pessoa ? (S.proj && by("projetos", S.proj) ? formMov("gasto") : formProjeto()) : formLanc(null, d.cartao || (S.view === "cartoes" && S.cartao && by("cartoes", S.cartao) ? S.cartao : undefined), d.pessoa, undefined, d.veiculo),
+  cartSub: d => { const it = itensCartoes(d.card, S.mes).filter(l => (l.emprestimo ? "__emp" : l.categoriaId || "") === d.id), c = cat(d.id), mp = new Map();
+    it.forEach(l => { const k = (l.subgrupo || "").trim() || "Sem subgrupo"; mp.set(k, (mp.get(k) || 0) + l.valor); });
+    const cores = ["#4a9be0", "#f29a38", "#2e9e5b", "#9c6ade", "#e0564a", "#26a69a", "#ec6fa0", "#8d6e63", "#607d8b", "#fbc02d"], rows = [...mp].sort((a, b) => b[1] - a[1]), t = total(it);
+    $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>${c.icone} ${esc(c.nome)}</h2><div class="mut" style="margin-bottom:8px">${d.card ? esc(by("cartoes", d.card)?.nome || "") + " · " : "Todos os cartões · "}${MESES[Number(S.mes.slice(5)) - 1]} · ${brl(t)}</div>
+    ${donut(rows.map(([n, v], i) => ({ nome: n, cor: cores[i % cores.length], v: r2(v) })), brl(t))}
+    <div class="day">Lançamentos</div>${it.sort((a, b) => b.data.localeCompare(a.data)).map(l => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${esc(by("cartoes", l.cartaoId)?.nome || "")} · ${esc((l.subgrupo || "").trim() || "Sem subgrupo")}</small></div><b class="neg">${brl(l.valor)}</b></div>`).join("")}
+    <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   det: d => detalhe(d), irCartao: d => { S.menu = false; S.view = "cartoes"; S.cartao = d.id; $("#main").scrollTop = 0; render(); },
   irMes: d => { S.mes = d.v; S.per = "mes"; S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; render(); },
   editObj: d => formObj(d.id),
