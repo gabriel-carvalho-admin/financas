@@ -358,9 +358,9 @@ V.inicio = () => {
   <div class="c-main">
     <div class="stats s5">
       ${stat('data-act="nav" data-v="contas"', "#3b7ddd", "🏦", T("saldo"), "Saldo nas contas", prev(T("previsto")), cls(T("saldo")))}
-      ${stat('data-act="det" data-k="rec"', "#2e9e5b", "＋", ef(rec), "Receitas recebidas", prev(total(rec)) + variacao(total(rec), total(noPer("receita", PA))), "pos")}
-      ${stat('data-act="det" data-k="des"', "#d9483b", "－", ef(desp), "Despesas pagas", prev(total(desp)) + variacao(total(desp), total(noPer("despesa", PA))), "neg")}
-      ${stat('data-act="det" data-k="bal"', "#f5b335", "⇅", r2(ef(rec) - ef(desp)), "Balanço", prev(bal), cls(ef(rec) - ef(desp)))}
+      ${stat('data-act="det" data-k="rec"', "#2e9e5b", "＋", T("rec"), "Receitas recebidas", prev(total(rec)) + variacao(total(rec), total(noPer("receita", PA))), "pos")}
+      ${stat('data-act="det" data-k="des"', "#d9483b", "－", T("des"), "Despesas pagas (saídas das contas)", prev(total(desp)) + variacao(total(desp), total(noPer("despesa", PA))), "neg")}
+      ${stat('data-act="det" data-k="bal"', "#f5b335", "⇅", r2(T("rec") - T("des")), "Balanço", prev(bal), cls(T("rec") - T("des")))}
       ${stat('data-act="nav" data-v="cartoes"', "#5b6ee0", "💳", fat, S.per === "mes" ? "Total faturas" : "Faturas que vencem no período", variacao(fat, fatAnt))}
     </div>
     <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true, 'det" data-k="conta', P)}</div>
