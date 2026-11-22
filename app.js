@@ -503,7 +503,9 @@ function cardFixas() {
   const grip = '<span class="grip" data-act="nada" title="Arrastar para mudar de grupo ou de ordem" aria-label="Arrastar">⠿</span>';
   const rowF = (x, g) => { const c = cat(x.f.categoriaId); return `<div class="row${g ? " arow" : ""}" data-key="f:${x.f.id}" data-act="lancarFixa" data-id="${x.f.id}">${g ? grip : ""}${av(c.icone, c.cor)}<div class="tx"><div>${esc(x.f.nome)}</div><small>${esc(c.nome + (x.f.subgrupo ? " › " + x.f.subgrupo : ""))} · ${x.txt}</small></div>
     <div class="r"><div class="b ${x.k === 3 ? 'pos' : 'neg'}">${x.l ? brl(x.l.valor) : "—"}</div><span class="tag" style="background:${x.cor}">${x.tag}</span></div><button data-act="editFixa" data-id="${x.f.id}" title="Editar conta mensal">${ico("mais")}</button></div>`; };
-  const rowA = l => { const c = cat(l.categoriaId), k = by("cartoes", l.cartaoId); return `<div class="row arow" data-key="d:${esc(nrm(l.descricao))}" data-act="editL" data-id="${l.id}">${grip}${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)}${k ? " · 💳 " + esc(k.nome) : ""}${l.efetivada === false ? " · pendente" : ""}</small></div><b class="${l.efetivada === false ? 'neg' : 'pos'}">${brl(l.valor)}</b></div>`; };
+  const rowA = l => { const c = cat(l.categoriaId), k = by("cartoes", l.cartaoId), pago = l.efetivada !== false, tag = k ? "No cartão" : pago ? "Paga" : "A pagar", cor = k ? "#5b6ee0" : pago ? "#2e9e5b" : "#f29a38";
+    return `<div class="row arow" data-key="d:${esc(nrm(l.descricao))}" data-act="editL" data-id="${l.id}">${grip}${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${esc(c.nome + (l.subgrupo ? " › " + l.subgrupo : ""))} · ${k ? `No cartão ${esc(k.nome)} · fatura de ${MESES[Number(fatMes(l).slice(5)) - 1].toLowerCase()}` : pago ? "Paga em " + dataBR(l.data).slice(0, 5) : "Vence em " + dataBR(l.data).slice(0, 5)}</small></div>
+    <div class="r"><div class="b ${pago || k ? "pos" : "neg"}">${brl(l.valor)}</div><span class="tag" style="background:${cor}">${tag}</span></div><button data-act="editL" data-id="${l.id}" title="Editar lançamento">${ico("mais")}</button></div>`; };
   const secoes = (itens, grupos, cfg, vazioTxt) => { const mp = by("config", cfg)?.map || {}, ks = grupos.map(g => g[0]);
     const grupoDoItem = i => ks.includes(mp[i.key]?.g) ? mp[i.key].g : i.padrao;
     return grupos.map(([k, n]) => { const g = itens.filter(i => grupoDoItem(i) === k).sort((a, b) => (mp[a.key]?.o ?? 1e9) - (mp[b.key]?.o ?? 1e9) || a.nome.localeCompare(b.nome)), sub = r2(g.reduce((s0, i) => s0 + i.v, 0));
@@ -513,13 +515,10 @@ function cardFixas() {
     const itens = [...fs.map(x => ({ key: "f:" + x.f.id, nome: x.f.nome, v: x.l?.valor || 0, padrao: assinPalpite(x.f.nome), html: g => rowF(x, g) })), ...avul.map(l => ({ key: "d:" + nrm(l.descricao), nome: l.descricao, v: l.valor, padrao: assinPalpite(l.descricao), html: () => rowA(l) }))];
     corpo = (itens.length ? "" : `<div class="empty">${vazio}</div>`) + secoes(itens, ASSIN_G, "assin", "Arraste uma assinatura para cá");
   } else {
-    const nomes = [...new Set(fs.map(x => (x.f.subgrupo || "").trim() || "Outras"))].sort((a, b) => (a === "Outras") - (b === "Outras") || a.localeCompare(b));
-    const extra = Object.values(by("config", "fixord")?.map || {}).map(m => m.g).filter(g => g && !nomes.includes(g));
-    const grupos = [...nomes, ...new Set(extra)].map(n => [n, n]);
-    corpo = fs.length ? secoes(fs.map(x => ({ key: "f:" + x.f.id, nome: x.f.nome, v: x.l?.valor || 0, padrao: (x.f.subgrupo || "").trim() || "Outras", html: g => rowF(x, g) })), grupos, "fixord", "Arraste uma conta para cá") : `<div class="empty">${vazio}</div>`;
+    corpo = fs.map(x => rowF(x, false)).join("") || `<div class="empty">${vazio}</div>`;
   }
   return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>${nav}${corpo}
-  ${fs.length || avul.length ? `<div class="sum">${t === 1 ? `${avul.length + fs.length} assinatura${avul.length + fs.length === 1 ? "" : "s"}${fs.length ? ` · ${pagas} de ${fs.length} contas mensais pagas` : ""} · total do mês: <b>${brl(r2(tot + totAv))}</b><br><small class="mut">Arraste pelo ⠿ para mudar de grupo ou de ordem.</small>` : `${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b><br><small class="mut">Arraste pelo ⠿ para mudar de grupo ou de ordem.</small>`}</div>` : ""}</div>`;
+  ${fs.length || avul.length ? `<div class="sum">${t === 1 ? `${avul.length + fs.length} assinatura${avul.length + fs.length === 1 ? "" : "s"}${fs.length ? ` · ${pagas} de ${fs.length} contas mensais pagas` : ""} · total do mês: <b>${brl(r2(tot + totAv))}</b><br><small class="mut">Arraste pelo ⠿ para mudar de grupo ou de ordem.</small>` : `${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b>`}</div>` : ""}</div>`;
 }
 // O aviso só aparece quando chega o dia do vencimento (ou depois) e a conta mensal ainda não foi paga
 const fixasVencidas = (ym = S.mes) => fixasMes(ym).filter(x => x.k !== 3 && x.venc <= hoje());
