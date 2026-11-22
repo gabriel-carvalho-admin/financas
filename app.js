@@ -495,12 +495,14 @@ const FIX_ABAS = [["Contas fixas", f => !ehAssin(f), "Cadastre água, luz, inter
 const fixTab = () => { try { return Number(localStorage.getItem("fixTab")) === 1 ? 1 : 0; } catch { return 0; } };
 function cardFixas() {
   const t = fixTab(), [nomeAba, filtro, vazio] = FIX_ABAS[t], todas = fixasMes(), fs = todas.filter(x => filtro(x.f)), pagas = fs.filter(x => x.k === 3).length, tot = r2(fs.reduce((s0, x) => s0 + (x.l?.valor || 0), 0));
+  const avul = t === 1 ? S.data.lancamentos.filter(l => l.tipo === "despesa" && !l.fixaId && nrm(l.subgrupo || "") === "assinaturas digitais" && mesComp(l) === S.mes).sort((a, b) => b.data.localeCompare(a.data)) : [], totAv = r2(avul.reduce((s0, l) => s0 + l.valor, 0));
   const nav = `<div class="fxnav"><button data-act="fixTab" data-v="${1 - t}" aria-label="Anterior">‹</button><b>${nomeAba}</b><span class="fxn">${t + 1}/2</span><button data-act="fixTab" data-v="${1 - t}" aria-label="Próxima">›</button></div>`;
   return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>${nav}
   ${fs.map(x => { const c = cat(x.f.categoriaId); return `<div class="row" data-act="lancarFixa" data-id="${x.f.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(x.f.nome)}</div><small>${esc(c.nome + (x.f.subgrupo ? " › " + x.f.subgrupo : ""))} · ${x.txt}</small></div>
     <div class="r"><div class="b">${x.l ? brl(x.l.valor) : "—"}</div><span class="tag" style="background:${x.cor}">${x.tag}</span></div><button data-act="editFixa" data-id="${x.f.id}" title="Editar conta mensal">${ico("mais")}</button></div>`; }).join("")
-    || `<div class="empty">${vazio}</div>`}
-  ${fs.length ? `<div class="sum">${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b></div>` : ""}</div>`;
+    || (avul.length ? "" : `<div class="empty">${vazio}</div>`)}
+  ${avul.length ? `<div class="day">Lançamentos do mês neste subgrupo</div>${avul.map(l => { const c = cat(l.categoriaId), k = by("cartoes", l.cartaoId); return `<div class="row" data-act="editL" data-id="${l.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)}${k ? " · 💳 " + esc(k.nome) : ""}${l.efetivada === false ? " · pendente" : ""}</small></div><b class="neg">${brl(l.valor)}</b></div>`; }).join("")}` : ""}
+  ${fs.length || avul.length ? `<div class="sum">${t === 1 ? `${avul.length} lançamento${avul.length === 1 ? "" : "s"}${fs.length ? ` · ${pagas} de ${fs.length} contas mensais pagas` : ""} · total do mês: <b>${brl(r2(tot + totAv))}</b>` : `${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b>`}</div>` : ""}</div>`;
 }
 // O aviso só aparece quando chega o dia do vencimento (ou depois) e a conta mensal ainda não foi paga
 const fixasVencidas = (ym = S.mes) => fixasMes(ym).filter(x => x.k !== 3 && x.venc <= hoje());
