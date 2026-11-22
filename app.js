@@ -207,6 +207,9 @@ function periodo(desl = 0) {
   if (p === "ano") { const y = Number(S.mes.slice(0, 4)) + desl; return { ini: `${y}-01-01`, fim: `${y}-12-31`, label: `Ano de ${y}`, nome: "no ano", ant: "ano anterior" }; }
   const ym = addMes(S.mes, desl); return { ini: `${ym}-01`, fim: `${ym}-31`, label: `${MESES[Number(ym.slice(5)) - 1]} ${ym.slice(0, 4)}`, nome: "no mês", ant: "mês anterior" };
 }
+const despRank = (P, desp = noPer("despesa", P)) => { let f = false; try { f = localStorage.getItem("rkFat") === "1"; } catch {} if (!f) return desp; const a = P.ini.slice(0, 7), b = P.fim.slice(0, 7);
+  return [...desp.filter(l => !l.cartaoId), ...S.data.lancamentos.filter(l => l.tipo === "despesa" && l.cartaoId && fatMes(l) >= a && fatMes(l) <= b)]; };
+const rkFatOn = () => { try { return localStorage.getItem("rkFat") === "1"; } catch { return false; } };
 const noPer = (tipo, P) => S.data.lancamentos.filter(l => l.tipo === tipo && l.data >= P.ini && l.data <= P.fim);
 const faturasNoPer = P => { let t = 0; for (const c of S.data.cartoes) for (let ym = ymOf(P.ini); ym <= ymOf(P.fim); ym = addMes(ym, 1)) { const v = dataNoMes(ym, c.vencimento || 10); if (v >= P.ini && v <= P.fim) t += fatTotal(c.id, ym); } return r2(t); };
 const doMes = (tipo, ym = S.mes) => S.data.lancamentos.filter(l => l.tipo === tipo && ymOf(l.data) === ym);
@@ -269,8 +272,8 @@ function detalhe(d) {
   if (k === "des") return modalLista(`Despesas ${P.nome} — ${P.label}`, desp);
   if (k === "rec") return modalLista(`Receitas ${P.nome} — ${P.label}`, rec);
   if (k === "bal") return modalLista(`Balanço ${P.nome} — ${P.label}`, [...rec, ...desp], `<div class="leg" style="margin-bottom:10px">${linhaInfo("Receitas", brl(total(rec)), "pos")}${linhaInfo("Despesas", brl(total(desp)), "neg")}${linhaInfo("Balanço (receitas − despesas)", brl(total(rec) - total(desp)), cls(total(rec) - total(desp)))}</div>`);
-  if (k === "cat") { const ls = desp.filter(l => (l.emprestimo ? "__emp" : l.categoriaId || "") === d.id), c = cat(d.id), sm = new Map(); ls.forEach(l => sm.set(l.subgrupo || "Sem subgrupo", (sm.get(l.subgrupo || "Sem subgrupo") || 0) + l.valor));
-    const subs = [...sm].sort((a, b) => b[1] - a[1]), t = total(ls) || 1, tudo = total(desp) || 1;
+  if (k === "cat") { const dr = despRank(P, desp), ls = dr.filter(l => (l.emprestimo ? "__emp" : l.categoriaId || "") === d.id), c = cat(d.id), sm = new Map(); ls.forEach(l => sm.set(l.subgrupo || "Sem subgrupo", (sm.get(l.subgrupo || "Sem subgrupo") || 0) + l.valor));
+    const subs = [...sm].sort((a, b) => b[1] - a[1]), t = total(ls) || 1, tudo = total(dr) || 1;
     return modalLista(`${c.icone} ${esc(c.nome)} — ${P.label}`, ls, `<div class="leg" style="margin-bottom:10px">${linhaInfo("Parte do total gasto", (t / tudo * 100).toFixed(1).replace(".", ",") + "%")}${subs.length > 1 || subs[0]?.[0] !== "Sem subgrupo" ? subs.map(([n, v]) => linhaInfo("› " + esc(n), brl(v))).join("") : ""}</div>`); }
   if (k === "rcr") return modalLista(`Despesas ${{ fixa: "fixas", parcelada: "parceladas", variavel: "variáveis" }[d.v]} — ${P.label}`, desp.filter(l => (l.recorrencia || "variavel") === d.v));
   if (k === "conta") { const c = by("contas", d.id), r = resumoConta(c, S.mes, P.ini, P.fim), ls = S.data.lancamentos.filter(l => !l.cartaoId && (l.contaId === c.id || l.contaDestinoId === c.id) && l.data >= P.ini && l.data <= P.fim);
@@ -325,7 +328,7 @@ V.inicio = () => {
   const T = k => r2(rs.reduce((s, x) => s + x[k], 0));
   const desp = noPer("despesa", P), rec = noPer("receita", P), ef = a => total(a.filter(l => l.efetivada)), bal = r2(total(rec) - total(desp));
   const fat = faturasNoPer(P), fatAnt = faturasNoPer(PA), variacao = (a, b) => b > 0 ? `<span class="chip">${a >= b ? "↗" : "↘"} ${Math.abs((a - b) / b * 100).toFixed(0)}% vs. ${P.ant}</span>` : "";
-  const rk = porCategoria(desp);
+  const rkD = despRank(P, desp), rk = porCategoria(rkD);
   const rc = k => total(desp.filter(l => (l.recorrencia || "variavel") === k));
   const stat = (act, cor, sym, v, lbl, extra = "", c = "") => `<div class="card stat clk" ${act}><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small>${extra}</div></div>`;
   const prev = v => `<small class="mut">Previsto ${brl(v)}</small>`;
@@ -338,7 +341,7 @@ V.inicio = () => {
     <div><span class="v">${brl(T("inicial"))}</span><small>Inicial (antes do período)</small></div>
     <div class="now"><span class="v ${cls(T("saldo"))}">${brl(T("saldo"))}</span><small>Saldo no fim do período</small></div>
     <div><span class="v">${brl(T("previsto"))}</span><small>Previsto</small></div></div><div class="vermais">ver detalhamento ›</div></div>
-  <div class="card"><h3>Ranking de categorias <button class="link" data-act="det" data-k="des">ver tudo</button></h3>${barras(rk, true)}${rk.length ? `<div class="sum">Total gasto ${P.nome}: ${brl(total(desp))} · toque em uma categoria</div>` : ""}</div>
+  <div class="card"><h3>Ranking de categorias <button class="link" data-act="det" data-k="des">ver tudo</button></h3><div class="seg per" style="margin-bottom:8px"><button class="${rkFatOn() ? "" : "on"}" data-act="rkModo" data-v="0" title="Gastos pela data em que a compra foi feita">Pela data da compra</button><button class="${rkFatOn() ? "on" : ""}" data-act="rkModo" data-v="1" title="Contas pagas na data + faturas dos cartões que vencem no período">Com faturas dos cartões</button></div>${barras(rk, true)}${rk.length ? `<div class="sum">Total ${rkFatOn() ? "(contas + faturas)" : "gasto"} ${P.nome}: ${brl(total(rkD))} · toque em uma categoria</div>` : ""}</div>
   <div class="c-side">
     ${cardFixas()}
     <div class="card"><h3>A pagar e a receber <small class="mut" style="font-weight:400">${pend.length} pendente${pend.length === 1 ? "" : "s"}</small></h3>${pend.slice(0, 6).map(l => `<div class="row" data-act="editL" data-id="${l.id}">${av(cat(l.emprestimo ? "__emp" : l.categoriaId).icone, cat(l.emprestimo ? "__emp" : l.categoriaId).cor)}<div class="tx"><div>${esc(l.descricao)}</div><small class="${l.data < hoje() ? "neg" : ""}">${l.data < hoje() ? "venceu em" : "para"} ${dataBR(l.data)}</small></div><span class="val ${l.tipo === "receita" ? "pos" : "neg"}">${brl(l.valor)}</span><button class="ck" data-act="toggleL" data-id="${l.id}" title="Marcar como pago/recebido">✓</button></div>`).join("") || '<div class="empty">Nada pendente até o fim do período.</div>'}
@@ -1405,6 +1408,7 @@ const A = {
     ${donut(rows.map(([n, v], i) => ({ nome: n, cor: cores[i % cores.length], v: r2(v) })), brl(t))}
     <div class="day">Lançamentos</div>${it.sort((a, b) => b.data.localeCompare(a.data)).map(l => linha(l)).join("")}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
+  rkModo: d => { try { localStorage.setItem("rkFat", d.v); } catch {} render(); },
   edPainel: () => { S.edPainel = !S.edPainel; render(); },
   wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
   wReset: () => store.set("config", "painel", { ordem: [], w: {}, h: {}, oculto: [] }),
