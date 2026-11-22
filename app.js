@@ -493,16 +493,27 @@ const fixasMes = (ym = S.mes) => S.data.fixas.map(f => ({ f, ...statusFixa(f, ym
 const ehAssin = f => nrm(f.subgrupo || "") === "assinaturas digitais";
 const FIX_ABAS = [["Contas fixas", f => !ehAssin(f), "Cadastre água, luz, internet… e o app lembra você todo mês."], ["Assinaturas digitais", ehAssin, "Cadastre Netflix, Spotify… (subgrupo “Assinaturas digitais”) e acompanhe todo mês."]];
 const fixTab = () => { try { return Number(localStorage.getItem("fixTab")) === 1 ? 1 : 0; } catch { return 0; } };
+const ASSIN_G = [["streamers", "🎬 Streamers"], ["ia", "🤖 IA"], ["ferramentas", "🛠️ Ferramentas"]];
+const assinMapa = () => by("config", "assin")?.map || {};
+const assinPalpite = n => /netflix|spotify|disney|hbo|\bmax\b|prime|amazon|youtube|globoplay|deezer|apple ?tv|paramount|star\+?|crunchyroll|telecine|premiere|twitch|tidal|music|filme|stream/.test(nrm(n)) ? "streamers" : /chat ?gpt|openai|claude|anthropic|gemini|copilot|midjourney|perplexity|cursor|grok|\bia\b|\bai\b|llm|deepseek/.test(nrm(n)) ? "ia" : "ferramentas";
 function cardFixas() {
   const t = fixTab(), [nomeAba, filtro, vazio] = FIX_ABAS[t], todas = fixasMes(), fs = todas.filter(x => filtro(x.f)), pagas = fs.filter(x => x.k === 3).length, tot = r2(fs.reduce((s0, x) => s0 + (x.l?.valor || 0), 0));
   const avul = t === 1 ? S.data.lancamentos.filter(l => l.tipo === "despesa" && !l.fixaId && nrm(l.subgrupo || "") === "assinaturas digitais" && mesComp(l) === S.mes).sort((a, b) => b.data.localeCompare(a.data)) : [], totAv = r2(avul.reduce((s0, l) => s0 + l.valor, 0));
   const nav = `<div class="fxnav"><button data-act="fixTab" data-v="${1 - t}" aria-label="Anterior">‹</button><b>${nomeAba}</b><span class="fxn">${t + 1}/2</span><button data-act="fixTab" data-v="${1 - t}" aria-label="Próxima">›</button></div>`;
-  return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>${nav}
-  ${fs.map(x => { const c = cat(x.f.categoriaId); return `<div class="row" data-act="lancarFixa" data-id="${x.f.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(x.f.nome)}</div><small>${esc(c.nome + (x.f.subgrupo ? " › " + x.f.subgrupo : ""))} · ${x.txt}</small></div>
-    <div class="r"><div class="b">${x.l ? brl(x.l.valor) : "—"}</div><span class="tag" style="background:${x.cor}">${x.tag}</span></div><button data-act="editFixa" data-id="${x.f.id}" title="Editar conta mensal">${ico("mais")}</button></div>`; }).join("")
-    || (avul.length ? "" : `<div class="empty">${vazio}</div>`)}
-  ${avul.length ? `<div class="day">Lançamentos do mês neste subgrupo</div>${avul.map(l => { const c = cat(l.categoriaId), k = by("cartoes", l.cartaoId); return `<div class="row" data-act="editL" data-id="${l.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)}${k ? " · 💳 " + esc(k.nome) : ""}${l.efetivada === false ? " · pendente" : ""}</small></div><b class="neg">${brl(l.valor)}</b></div>`; }).join("")}` : ""}
-  ${fs.length || avul.length ? `<div class="sum">${t === 1 ? `${avul.length} lançamento${avul.length === 1 ? "" : "s"}${fs.length ? ` · ${pagas} de ${fs.length} contas mensais pagas` : ""} · total do mês: <b>${brl(r2(tot + totAv))}</b>` : `${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b>`}</div>` : ""}</div>`;
+  const grip = '<span class="grip" data-act="nada" title="Arrastar para mudar de grupo ou de ordem" aria-label="Arrastar">⠿</span>';
+  const rowF = (x, g) => { const c = cat(x.f.categoriaId); return `<div class="row${g ? " arow" : ""}" data-key="f:${x.f.id}" data-act="lancarFixa" data-id="${x.f.id}">${g ? grip : ""}${av(c.icone, c.cor)}<div class="tx"><div>${esc(x.f.nome)}</div><small>${esc(c.nome + (x.f.subgrupo ? " › " + x.f.subgrupo : ""))} · ${x.txt}</small></div>
+    <div class="r"><div class="b">${x.l ? brl(x.l.valor) : "—"}</div><span class="tag" style="background:${x.cor}">${x.tag}</span></div><button data-act="editFixa" data-id="${x.f.id}" title="Editar conta mensal">${ico("mais")}</button></div>`; };
+  const rowA = l => { const c = cat(l.categoriaId), k = by("cartoes", l.cartaoId); return `<div class="row arow" data-key="d:${esc(nrm(l.descricao))}" data-act="editL" data-id="${l.id}">${grip}${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)}${k ? " · 💳 " + esc(k.nome) : ""}${l.efetivada === false ? " · pendente" : ""}</small></div><b class="neg">${brl(l.valor)}</b></div>`; };
+  let corpo;
+  if (t === 1) {
+    const mp = assinMapa(), itens = [...fs.map(x => ({ key: "f:" + x.f.id, nome: x.f.nome, v: x.l?.valor || 0, html: g => rowF(x, g) })), ...avul.map(l => ({ key: "d:" + nrm(l.descricao), nome: l.descricao, v: l.valor, html: () => rowA(l) }))];
+    const grupoDoItem = i => ASSIN_G.some(([k]) => k === mp[i.key]?.g) ? mp[i.key].g : assinPalpite(i.nome);
+    corpo = itens.length || true ? ASSIN_G.map(([k, n]) => { const g = itens.filter(i => grupoDoItem(i) === k).sort((a, b) => (mp[a.key]?.o ?? 1e9) - (mp[b.key]?.o ?? 1e9) || a.nome.localeCompare(b.nome)), sub = r2(g.reduce((s0, i) => s0 + i.v, 0));
+      return `<div class="agh"><b>${n}</b><span>${g.length} · <b>${brl(sub)}</b></span></div><div class="agrp" data-g="${k}">${g.map(i => i.html(true)).join("")}<div class="vazio">Arraste uma assinatura para cá</div></div>`; }).join("") : "";
+    if (!itens.length) corpo = `<div class="empty">${vazio}</div>` + corpo;
+  } else corpo = fs.map(x => rowF(x, false)).join("") || `<div class="empty">${vazio}</div>`;
+  return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>${nav}${corpo}
+  ${fs.length || avul.length ? `<div class="sum">${t === 1 ? `${avul.length + fs.length} assinatura${avul.length + fs.length === 1 ? "" : "s"}${fs.length ? ` · ${pagas} de ${fs.length} contas mensais pagas` : ""} · total do mês: <b>${brl(r2(tot + totAv))}</b><br><small class="mut">Arraste pelo ⠿ para mudar de grupo ou de ordem.</small>` : `${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b>`}</div>` : ""}</div>`;
 }
 // O aviso só aparece quando chega o dia do vencimento (ou depois) e a conta mensal ainda não foi paga
 const fixasVencidas = (ym = S.mes) => fixasMes(ym).filter(x => x.k !== 3 && x.venc <= hoje());
@@ -1650,6 +1661,25 @@ document.addEventListener("pointerdown", e => {
       const mud = [];
       document.querySelectorAll(".pgrp").forEach(grp => [...grp.querySelectorAll(".pcard")].forEach((c, i) => { const p = by("pessoas", c.dataset.id); if (p && (p.ordem !== i || grupoDe(p) !== grp.dataset.grupo || p.grupo !== grp.dataset.grupo)) mud.push(store.set("pessoas", p.id, { ...p, ordem: i, grupo: grp.dataset.grupo })); }));
       Promise.all(mud).then(() => render()).catch(err => toast("Não foi possível salvar: " + (err.code || err.message)));
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", fim); window.addEventListener("pointercancel", fim);
+    return;
+  }
+  const ar = g.closest(".arow");
+  if (ar) {
+    ar.classList.add("drag"); document.body.classList.add("arrastando");
+    const move = ev => {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY), grp = el?.closest(".agrp"); if (!grp) return;
+      const alvo = el.closest(".arow");
+      if (alvo && alvo !== ar) { const b = alvo.getBoundingClientRect(); grp.insertBefore(ar, ev.clientY < b.top + b.height / 2 ? alvo : alvo.nextSibling); }
+      else if (!alvo && ar.parentNode !== grp) grp.insertBefore(ar, grp.querySelector(".vazio"));
+    };
+    const fim = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", fim); window.removeEventListener("pointercancel", fim);
+      ar.classList.remove("drag"); document.body.classList.remove("arrastando");
+      const mp = { ...assinMapa() };
+      document.querySelectorAll(".agrp").forEach(grp => { const vistos = new Set(); [...grp.querySelectorAll(".arow")].forEach(r => { if (vistos.has(r.dataset.key)) return; mp[r.dataset.key] = { g: grp.dataset.g, o: vistos.size }; vistos.add(r.dataset.key); }); });
+      store.set("config", "assin", { map: mp }).then(() => render()).catch(err => toast("Não foi possível salvar: " + (err.code || err.message)));
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", fim); window.addEventListener("pointercancel", fim);
     return;

@@ -312,3 +312,11 @@ td.lkc{cursor:pointer}td.lkc:hover{background:var(--soft)}
 .fxnav b{min-width:150px;text-align:center}
 .fxnav .fxn{font-size:11px;opacity:.6}
 .fxnav button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line,#ddd);background:var(--card,#fff);font-size:20px;line-height:1;cursor:pointer;color:inherit}
+
+.agh{display:flex;justify-content:space-between;align-items:center;padding:12px 4px 4px;font-size:13px}
+.agh span{color:var(--mut);font-size:12px}
+.agrp{min-height:56px;border-radius:14px}
+.agrp .vazio{display:none;border:2px dashed var(--line);border-radius:14px;color:var(--mut);place-items:center;min-height:48px;font-size:13px}
+.agrp .vazio:only-child{display:grid}
+.arow.drag{opacity:.55;outline:2px dashed var(--pri);pointer-events:none}
+.arow .grip{margin-left:-6px;margin-right:2px}
