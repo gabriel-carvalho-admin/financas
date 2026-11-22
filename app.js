@@ -988,9 +988,49 @@ function draw() {
     <button data-act="dark">${ico("config")}<span>Tema escuro</span><span class="ck ${document.documentElement.classList.contains("dark") ? "on" : ""}" style="margin-left:auto;width:22px;height:22px;font-size:11px">✓</span></button></nav></div>` : "";
   const main = $("#main"), top = main.scrollTop;
   main.innerHTML = !S.demo && !S.carregado ? '<div class="empty">Carregando…</div>' : V[S.view]();
+  if (S.view === "inicio" && (S.demo || S.carregado)) painel(main);
   main.scrollTop = top;
 }
 
+/* ---------- painel do início: ordenar e redimensionar os cards ---------- */
+const PAINEL_PAD = { resumo: [12], saldo: [12], contas: [12], "evolucao-das-despesas": [4], "receitas-x-despesas": [4], "ultimas-despesas": [4] };
+const PAINEL_ORD = ["resumo", "saldo", "ranking-de-categorias", "fixas", "contas", "a-pagar-e-a-receber", "cartoes-de-credito", "orcamentos-de-despesas", "despesas-por-recorrencia", "evolucao-das-despesas", "ultimas-despesas", "receitas-x-despesas", "receitas-por-categoria", "a-receber-de-pessoas-e-empresas", "objetivos"];
+const PAINEL_NOME = { resumo: "Resumo (saldo, receitas, despesas)", saldo: "Saldo do período", fixas: "Contas mensais", contas: "Contas" };
+const slugW = t => nrm(t).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const wId = n => n.id === "cfixas" ? "fixas" : n.matches(".stats") ? "resumo" : n.matches("[data-k=saldo]") ? "saldo" : slugW(n.querySelector("h3")?.childNodes[0]?.textContent || "painel");
+const wNome = (id, n) => PAINEL_NOME[id] || n?.querySelector("h3")?.childNodes[0]?.textContent.trim() || id;
+const layoutP = () => by("config", "painel") || {};
+function salvarPainel(patch) { const l = { ...layoutP() }; delete l.id; return store.set("config", "painel", { ...l, ...patch }); }
+function painel(main) {
+  const dash = $(".dash", main); if (!dash) return;
+  const nodes = [...$$(".dash > .card, .dash > .c-side > *, .dash > .c-main > .stats, .dash > .c-main > .card, .dash > .c-main > .grid > *", main)];
+  const mapa = new Map(nodes.map(n => [wId(n), n])), L = layoutP(), ed = !!S.edPainel;
+  const ordem = [...(L.ordem || []), ...PAINEL_ORD, ...mapa.keys()].filter((id, i, a) => mapa.has(id) && a.indexOf(id) === i);
+  const oculto = new Set(L.oculto || []);
+  const flat = document.createElement("div"); flat.className = "dash2" + (ed ? " ed" : "");
+  ordem.forEach(id => { const n = mapa.get(id), esc2 = oculto.has(id); if (esc2 && !ed) return; if (esc2) return;
+    n.dataset.w = id; n.classList.add("wd"); n.style.gridColumn = `span ${L.w?.[id] || PAINEL_PAD[id]?.[0] || 6}`;
+    if (L.h?.[id]) { n.style.height = L.h[id] + "px"; n.classList.add("wh"); }
+    if (ed) n.insertAdjacentHTML("afterbegin", `<div class="wtb"><span class="wgrip" title="Arraste para mudar de lugar">⠿</span><button type="button" data-act="wMove" data-id="${id}" data-d="-1" title="Subir">↑</button><button type="button" data-act="wMove" data-id="${id}" data-d="1" title="Descer">↓</button><button type="button" data-act="wHide" data-id="${id}" title="Ocultar este card">✕</button></div><span class="wrz" title="Arraste para redimensionar"></span>`);
+    flat.appendChild(n); });
+  dash.replaceWith(flat);
+  const top = $(".pertop", main);
+  const bar = `<div class="pbar"><button class="btn ${ed ? "" : "ghost"}" data-act="edPainel">${ed ? "✓ Concluir" : "✎ Organizar painel"}</button>${ed ? `<button class="btn ghost" data-act="wReset">Restaurar padrão</button><span class="mut">Arraste ⠿ para mover, o canto inferior direito para redimensionar.</span>` : ""}</div>`
+    + (ed && oculto.size ? `<div class="pbar"><span class="mut">Ocultos:</span>${[...oculto].filter(id => mapa.has(id)).map(id => `<button class="chip clk" data-act="wShow" data-id="${id}">+ ${esc(wNome(id, mapa.get(id)))}</button>`).join("")}</div>` : "");
+  (top || flat).insertAdjacentHTML(top ? "afterend" : "beforebegin", bar);
+}
+document.addEventListener("pointerdown", e => {
+  const rz = e.target.closest?.(".dash2.ed .wrz"), gr = e.target.closest?.(".dash2.ed .wgrip"); if (!rz && !gr) return;
+  e.preventDefault(); const w = e.target.closest(".wd"), cont = w.parentElement, id = w.dataset.w;
+  if (rz) { const gap = 14, colW = (cont.clientWidth + gap) / 12, x0 = e.clientX, y0 = e.clientY, w0 = w.offsetWidth, h0 = w.offsetHeight; let n = 0, h = 0;
+    const mv = ev => { n = Math.max(2, Math.min(12, Math.round((w0 + ev.clientX - x0 + gap) / colW))); h = Math.max(90, Math.round(h0 + ev.clientY - y0)); w.style.gridColumn = `span ${n}`; w.style.height = h + "px"; w.classList.add("wh"); };
+    const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); if (n) salvarPainel({ w: { ...layoutP().w, [id]: n }, h: { ...layoutP().h, [id]: h } }); };
+    addEventListener("pointermove", mv); addEventListener("pointerup", up); return; }
+  w.classList.add("arr"); const mv = ev => { const alvo = document.elementFromPoint(ev.clientX, ev.clientY)?.closest(".wd"); if (!alvo || alvo === w || alvo.parentElement !== cont) return; const r = alvo.getBoundingClientRect(), depois = ev.clientY > r.top + r.height / 2 || (ev.clientY > r.top && ev.clientX > r.left + r.width / 2 && Math.abs(ev.clientY - (r.top + r.height / 2)) < r.height / 2);
+      cont.insertBefore(w, depois ? alvo.nextSibling : alvo); };
+  const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); w.classList.remove("arr"); salvarPainel({ ordem: [...cont.children].filter(c => c.dataset.w).map(c => c.dataset.w) }); };
+  addEventListener("pointermove", mv); addEventListener("pointerup", up);
+});
 /* ---------- seletor de emojis (base completa, carregada sob demanda) ---------- */
 let EMODB = null;
 async function abrirEmojis(cb) {
@@ -1330,6 +1370,10 @@ const A = {
         recorrencia: parc ? "parcelada" : "variavel", ...(parc ? { parcela: Number(p[1]), parcelas: Number(p[2]) } : {}), importId: x.importId, descOrig: x.descOrig, ...(naFatura ? { faturaRef: S.mes } : {}) }; });
     try { await store.addMany("lancamentos", novos); toast(`${novos.length} compras importadas (${brl(total(novos))}).`); IMP = null; $("#modal").innerHTML = ""; }
     catch (err) { toast("Não foi possível importar: " + (err.code || err.message)); } },
+  edPainel: () => { S.edPainel = !S.edPainel; render(); },
+  wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
+  wReset: () => store.set("config", "painel", { ordem: [], w: {}, h: {}, oculto: [] }),
+  wMove: d => { const ids = [...$$(".dash2 .wd")].map(n => n.dataset.w), i = ids.indexOf(d.id), j = i + Number(d.d); if (i < 0 || j < 0 || j >= ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]]; salvarPainel({ ordem: [...ids, ...(layoutP().ordem || []).filter(x => !ids.includes(x))] }); },
   fechar2: (d, e) => { if (d.force || e.target.classList.contains("ov")) $("#modal2").innerHTML = ""; }, verNota: d => { const l = by("lancamentos", d.id); if (l?.nota) verNotaImg(l.nota, l.descricao); },
   fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) { $("#modal").innerHTML = ""; IMP = null; } },
   dark: () => { const on = document.documentElement.classList.toggle("dark"); try { localStorage.setItem("mf-dark", on ? "1" : "0"); } catch (e) {} render(); },
