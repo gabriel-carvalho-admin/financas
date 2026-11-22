@@ -18,7 +18,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const r2 = n => Math.round(n * 100) / 100;
 const brl = v => { if (S.priv) return "R$ ••••"; v = Math.abs(v) < 0.005 ? 0 : v; return (v < 0 ? "-" : "") + "R$ " + Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
-const parseMoney = s => { s = String(s ?? "").trim().replace(/[R$\s]/g, ""); if (s.includes(",")) s = s.replace(/\./g, "").replace(",", "."); const n = parseFloat(s); return isFinite(n) ? r2(n) : 0; };
+const parseMoney = s => { s = String(s ?? "").trim().replace(/[R$\s]/g, ""); if (s.includes(",")) s = s.replace(/\./g, "").replace(",", "."); else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ""); const n = parseFloat(s); return isFinite(n) ? r2(n) : 0; };
 const moneyIn = n => n ? n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }) : "";
 const pad = n => String(n).padStart(2, "0");
 const hoje = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
@@ -1038,7 +1038,44 @@ function formPrefs() {
       { k: "inicio", label: "Meus dados começam em (meses anteriores não entram em gráficos, totais, orçamentos nem comparações)", type: "select", options: () => meses }],
     onSave: async v => { await store.set("config", "prefs", { cartao: v.cartao, inicio: v.inicio }); toast("Preferências salvas."); } });
 }
-V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px;margin-bottom:14px"><h3>Cartões e período</h3>
+/* ---------- diagnóstico dos dados ---------- */
+function diagnostico() {
+  const D = S.data, ini = inicioDados(), r = [], add = (nivel, t, itens) => itens.length && r.push({ nivel, t, itens }), ids = k => new Set(D[k].map(x => x.id));
+  const cs = ids("contas"), ck = ids("cartoes"), cc = ids("categorias"), cp = ids("pessoas"), cv = ids("veiculos"), cf = ids("fixas"), L = D.lancamentos, desc = l => `${dataBR(l.data)} · ${l.descricao} · ${brl(l.valor)}`;
+  add("erro", "Valor zero, negativo ou inválido", L.filter(l => !(l.valor > 0)).map(desc));
+  add("erro", "Data inválida", L.filter(l => !/^\d{4}-\d{2}-\d{2}$/.test(l.data || "") || isNaN(new Date(l.data + "T12:00"))).map(l => `${l.data} · ${l.descricao}`));
+  add("erro", "Lançamento ligado a conta, cartão, pessoa, veículo ou conta mensal que não existe mais", L.filter(l => (l.contaId && !cs.has(l.contaId)) || (l.cartaoId && !ck.has(l.cartaoId)) || (l.contaDestinoId && !cs.has(l.contaDestinoId)) || (l.pessoaId && !cp.has(l.pessoaId)) || (l.veiculoId && !cv.has(l.veiculoId)) || (l.fixaId && !cf.has(l.fixaId))).map(desc));
+  add("erro", "Lançamento sem conta nem cartão", L.filter(l => !l.contaId && !l.cartaoId).map(desc));
+  add("erro", "Lançamento com conta E cartão ao mesmo tempo (conta em dobro)", L.filter(l => l.contaId && l.cartaoId).map(desc));
+  add("erro", "Receita lançada em cartão de crédito", L.filter(l => l.tipo === "receita" && l.cartaoId && !l.reembolso).map(desc));
+  add("erro", "Transferência com origem e destino iguais", L.filter(l => l.tipo === "transferencia" && l.contaId === l.contaDestinoId).map(desc));
+  add("erro", "Categoria que não existe mais", L.filter(l => l.categoriaId && l.categoriaId !== "__emp" && !cc.has(l.categoriaId)).map(desc));
+  add("aviso", "Despesas e receitas sem categoria", L.filter(l => l.tipo !== "transferencia" && !l.emprestimo && !l.reembolso && !l.categoriaId && l.data.slice(0, 7) >= ini).map(desc));
+  const mk = new Map(); L.forEach(l => { const k = [l.tipo, l.data, l.valor, nrm(l.descricao), l.contaId || l.cartaoId, l.parcela || ""].join("|"); (mk.get(k) || mk.set(k, []).get(k)).push(l); });
+  add("aviso", "Possíveis lançamentos duplicados (mesma data, valor, descrição e conta)", [...mk.values()].filter(a => a.length > 1).map(a => `${a.length}× ${desc(a[0])}`));
+  add("aviso", "Parcela maior que o total de parcelas", L.filter(l => l.parcelas && l.parcela > l.parcelas).map(desc));
+  const fx = new Map(); L.filter(l => l.fixaId && l.mesRef).forEach(l => { const k = l.fixaId + "|" + l.mesRef; (fx.get(k) || fx.set(k, []).get(k)).push(l); });
+  add("erro", "Conta mensal lançada mais de uma vez no mesmo mês (soma em dobro)", [...fx.values()].filter(a => a.length > 1).map(a => `${a.length}× ${a[0].descricao} em ${NOME_MES(a[0].mesRef)} (${a.map(x => brl(x.valor)).join(" + ")})`));
+  add("aviso", "Pagamento de fatura diferente do total atual da fatura (compra lançada depois de pagar?)", D.cartoes.flatMap(c => Object.entries(c.pagas || {}).filter(([ym, p]) => Math.abs(p.valor - fatTotal(c.id, ym)) > 0.01).map(([ym, p]) => `${c.nome} · fatura de ${NOME_MES(ym)}: pago ${brl(p.valor)}, soma atual ${brl(fatTotal(c.id, ym))}`)));
+  add("aviso", "Pagamento de fatura feito por conta que não existe mais", D.cartoes.flatMap(c => Object.entries(c.pagas || {}).filter(([, p]) => p.contaId && !cs.has(p.contaId)).map(([ym]) => `${c.nome} · ${NOME_MES(ym)}`)));
+  add("aviso", "Despesas ou receitas em conta, com data já passada, ainda não marcadas como pagas", L.filter(l => !l.cartaoId && l.tipo !== "transferencia" && !l.efetivada && l.data < hoje() && l.data.slice(0, 7) >= ini).map(desc));
+  add("aviso", "Lançamentos com data bem à frente (mais de 13 meses)", L.filter(l => l.data > addMes(hoje().slice(0, 7), 13) + "-31" && !l.grupoId).map(desc));
+  add("aviso", "Lançamentos anteriores ao início dos dados (não entram nos totais)", L.filter(l => l.data.slice(0, 7) < ini && !l.cartaoId).map(desc));
+  add("aviso", "Contas com saldo negativo", D.contas.map(c => ({ c, v: resumoConta(c, S.mes).saldo })).filter(x => x.v < -0.005).map(x => `${x.c.nome}: ${brl(x.v)}`));
+  D.veiculos.forEach(v => { const ks = L.filter(l => l.veiculoId === v.id && Number(l.km) > 0).sort((a, b) => a.data.localeCompare(b.data)); const bad = ks.filter((l, i) => i && l.km < ks[i - 1].km); add("aviso", `Veículo ${v.nome}: km menor que o lançamento anterior`, bad.map(l => `${desc(l)} · ${l.km} km`)); });
+  add("aviso", "Pessoas que pagaram mais do que deviam", D.pessoas.map(p => ({ p, ...contaPessoa(p.id, "9999-12") })).filter(x => x.deve < -0.005).map(x => `${x.p.nome}: ${brl(x.deve)}`));
+  const orf = D.pessoas.filter(p => !L.some(l => l.pessoaId === p.id)); add("aviso", "Pessoas sem nenhum lançamento", orf.map(p => p.nome));
+  add("aviso", "Categorias duplicadas (mesmo nome e tipo)", [...new Set(D.categorias.filter((c, i, a) => a.findIndex(x => x.tipo === c.tipo && nrm(x.nome) === nrm(c.nome)) !== i).map(c => `${c.nome} (${c.tipo})`))]);
+  return r;
+}
+function abrirDiagnostico() {
+  const r = diagnostico(), n = r.reduce((a, x) => a + x.itens.length, 0);
+  $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:600px"><h2>Diagnóstico dos dados</h2><div class="mut" style="margin-bottom:10px">${r.length ? `${n} ${n === 1 ? "ponto" : "pontos"} para conferir em ${r.length} ${r.length === 1 ? "verificação" : "verificações"}.` : "✅ Nenhum problema encontrado."}</div>
+    ${r.sort((a, b) => (a.nivel === "erro" ? 0 : 1) - (b.nivel === "erro" ? 0 : 1)).map(x => `<div class="day">${x.nivel === "erro" ? "❌" : "⚠️"} ${esc(x.t)} (${x.itens.length})</div><ul class="orgl">${x.itens.slice(0, 12).map(i => `<li>${esc(i)}</li>`).join("")}${x.itens.length > 12 ? `<li class="mut">… e mais ${x.itens.length - 12}</li>` : ""}</ul>`).join("")}
+    <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`;
+}
+V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px;margin-bottom:14px"><h3>Diagnóstico</h3><div class="row" data-act="diagnostico"><div class="tx"><div>Verificar os dados</div><small>Procura valores errados, lançamentos duplicados, contas sem categoria, faturas que não batem…</small></div><span class="mut">›</span></div></div>
+<div class="card" style="max-width:520px;margin-bottom:14px"><h3>Cartões e período</h3>
   <div class="row" data-act="prefs"><div class="tx"><div>Contar o cartão ${modoFatura() ? "pela fatura (dia de fechamento)" : "pela data da compra"}</div><small>Dados válidos a partir de ${NOME_MES(inicioDados())} · toque para alterar</small></div><span class="mut">›</span></div></div>
 <div class="card" style="max-width:520px;margin-bottom:14px"><h3>Fechamento do mês</h3>
   <div class="mut" style="font-size:13px;margin:0 0 8px">Todo último dia do mês, anote quanto sobrou em cada conta (carteira, contas correntes…) e compare com o que o app calculou. O valor informado vira o saldo inicial do mês seguinte. O app avisa no Início no último dia do mês.</div>
@@ -1479,7 +1516,7 @@ const A = {
     ${prev.length ? `<div class="day">Previstos (ainda não ${rec ? "recebidos" : "pagos"})</div>${prev.sort((a, b) => a.data.localeCompare(b.data)).map(l => linha(l)).join("")}` : ""}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   "fechar-mes": d => formFechamento(d.ym), verFech: d => verFechamento(d.ym),
-  prefs: () => formPrefs(),
+  prefs: () => formPrefs(), diagnostico: () => abrirDiagnostico(),
   edPainel: () => { S.edPainel = !S.edPainel; render(); },
   wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
   wReset: () => store.set("config", "painel", { ordem: [], w: {}, h: {}, oculto: [] }),
