@@ -399,7 +399,7 @@ const sub = l => {
   if (l.tipo === "transferencia") return `${esc(onde || "?")} → ${esc(by("contas", l.contaDestinoId)?.nome || "?")}`;
   if (l.reembolso) return ["Pagamento recebido", onde].filter(Boolean).map(esc).join(" · ");
   if (l.emprestimo) return ["Empréstimo", l.vencimento ? "pagar até " + dataBR(l.vencimento) : "", onde, by("pessoas", l.pessoaId)?.nome].filter(Boolean).map(esc).join(" · ");
-  return [(l.nota ? "📎 " : "") + cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.veiculoId ? "🚗 " + (by("veiculos", l.veiculoId)?.nome || "") + (l.km ? " · " + Number(l.km).toLocaleString("pt-BR") + " km" : "") + (l.litros ? " · " + String(l.litros).replace(".", ",") + " L" + (l.cheio === false ? " (parcial)" : "") : "") : "", l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
+  return [(l.nota ? "📎 " : "") + cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.veiculoId ? "🚗 " + (by("veiculos", l.veiculoId)?.nome || "") + (l.km ? " · " + Number(l.km).toLocaleString("pt-BR") + " km" : "") + (l.litros ? " · " + String(l.litros).replace(".", ",") + " L" + (l.cheio === false ? " (parcial)" : "") : "") : "", l.parcelas ? `${l.parcela}/${l.parcelas}${l.projetada ? " (prevista)" : ""}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
 };
 const linha = (l, sel) => {
   const c = l.tipo === "transferencia" ? { icone: "⇄", cor: "#5b6ee0" } : l.reembolso ? { icone: "↩", cor: by("pessoas", l.pessoaId)?.cor || "#2e9e5b" } : cat(l.emprestimo ? "__emp" : l.categoriaId);
@@ -1129,7 +1129,7 @@ function abrirDiagnostico() {
     ${r.sort((a, b) => (a.nivel === "erro" ? 0 : 1) - (b.nivel === "erro" ? 0 : 1)).map(x => `<div class="day">${x.nivel === "erro" ? "❌" : "⚠️"} ${esc(x.t)} (${x.itens.length})</div><ul class="orgl">${x.itens.slice(0, 12).map(i => `<li>${esc(i)}</li>`).join("")}${x.itens.length > 12 ? `<li class="mut">… e mais ${x.itens.length - 12}</li>` : ""}</ul>`).join("")}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`;
 }
-V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px;margin-bottom:14px"><h3>Diagnóstico</h3><div class="row" data-act="diagnostico"><div class="tx"><div>Verificar os dados</div><small>Procura valores errados, lançamentos duplicados, contas sem categoria, faturas que não batem…</small></div><span class="mut">›</span></div></div>
+V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px;margin-bottom:14px"><h3>Compras parceladas</h3><div class="row" data-act="parcelas"><div class="tx"><div>Gerar parcelas restantes</div><small>Completa nos próximos meses as compras parceladas que você já lançou ou importou</small></div><span class="mut">›</span></div></div><div class="card" style="max-width:520px;margin-bottom:14px"><h3>Diagnóstico</h3><div class="row" data-act="diagnostico"><div class="tx"><div>Verificar os dados</div><small>Procura valores errados, lançamentos duplicados, contas sem categoria, faturas que não batem…</small></div><span class="mut">›</span></div></div>
 <div class="card" style="max-width:520px;margin-bottom:14px"><h3>Cartões e período</h3>
   <div class="row" data-act="prefs"><div class="tx"><div>Contar o cartão ${modoFatura() ? "pela fatura (dia de fechamento)" : "pela data da compra"}</div><small>Dados válidos a partir de ${NOME_MES(inicioDados())} · toque para alterar</small></div><span class="mut">›</span></div></div>
 <div class="card" style="max-width:520px;margin-bottom:14px"><h3>Fechamento do mês</h3>
@@ -1548,7 +1548,13 @@ const A = {
       if (naFatura && data > `${S.mes}-31`) data = x.data;
       return { tipo: "despesa", descricao: x.nome.trim() || x.descOrig || "Compra no cartão", valor: x.valor, data, ...(data !== x.data ? { dataCompra: x.data } : {}), categoriaId: x.categoriaId || "", subgrupo: (x.subgrupo || "").trim(), contaId: "", cartaoId: IMP.cartaoId, contaDestinoId: "", pessoaId: x.pessoaId || "", ...(x.veiculoId ? { veiculoId: x.veiculoId } : {}), efetivada: true,
         recorrencia: parc ? "parcelada" : "variavel", ...(parc ? { parcela: Number(p[1]), parcelas: Number(p[2]) } : {}), importId: x.importId, descOrig: x.descOrig, ...(naFatura ? { faturaRef: S.mes } : {}) }; });
-    try { await store.addMany("lancamentos", novos); toast(`${novos.length} compras importadas (${brl(total(novos))}).`); IMP = null; $("#modal").innerHTML = ""; }
+    try {
+      const prevIds = new Map(sel.filter(x => x.prev).map(x => [x.importId, x.prev])), conf = [], add = [];
+      novos.forEach(n => { const pid = prevIds.get(n.importId), orig = pid && by("lancamentos", pid); if (orig) conf.push({ ...orig, valor: n.valor, importId: n.importId, descOrig: n.descOrig, projetada: false, ...(n.faturaRef ? { faturaRef: n.faturaRef } : {}) }); else add.push(n); });
+      const extras = []; if (IMP.futuras) add.concat(conf).forEach(n => { if (n.parcelas > 1 && n.parcela < n.parcelas) extras.push(...faltantes(n, [...S.data.lancamentos, ...add, ...conf, ...extras])); });
+      await emLotes(conf, c => store.set("lancamentos", c.id, c));
+      await store.addMany("lancamentos", [...add, ...extras]);
+      toast(`${novos.length} compras importadas (${brl(total(novos))})${extras.length ? ` e ${extras.length} parcelas futuras lançadas` : ""}.`); IMP = null; $("#modal").innerHTML = ""; }
     catch (err) { toast("Não foi possível importar: " + (err.code || err.message)); } },
   selTog: d => { const q = selAn(), g = d.g; q[g].has(d.id) ? q[g].delete(d.id) : q[g].add(d.id); store.set("config", "analise", { p: [...q.p], v: [...q.v], f: [...q.f] }); },
   selLimpar: () => store.set("config", "analise", { p: [], v: [], f: [] }),
@@ -1573,7 +1579,9 @@ const A = {
     ${prev.length ? `<div class="day">Previstos (ainda não ${rec ? "recebidos" : "pagos"})</div>${prev.sort((a, b) => a.data.localeCompare(b.data)).map(l => linha(l)).join("")}` : ""}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   "fechar-mes": d => formFechamento(d.ym), verFech: d => verFechamento(d.ym),
-  prefs: () => formPrefs(), diagnostico: () => abrirDiagnostico(),
+  prefs: () => formPrefs(), diagnostico: () => abrirDiagnostico(), parcelas: () => abrirParcelas(),
+  parGerar: async () => { const novos = (PAR || []).filter(x => x.on).flatMap(x => x.novos); if (!novos.length) return toast("Marque pelo menos uma compra.");
+    try { await store.addMany("lancamentos", novos); PAR = null; $("#modal").innerHTML = ""; toast(`${novos.length} parcelas criadas.`); } catch (err) { toast("Não foi possível criar: " + (err.code || err.message)); } },
   edPainel: () => { S.edPainel = !S.edPainel; render(); },
   wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
   wReset: () => store.set("config", "painel", { ordem: [], w: {}, h: {}, oculto: [] }),
@@ -1644,15 +1652,42 @@ async function importarArquivo(cartaoId, file) {
   S.data.lancamentos.forEach(l => { if (l.descOrig) hist.set(norm(l.descOrig), l); });
   const doCartao = S.data.lancamentos.filter(l => l.cartaoId === cartaoId);
   bruto.forEach(x => { x.nome = String(x.nome || "").replace(/\s+/g, " ").trim(); });
-  IMP = { cartaoId, arquivo: file.name, modo: "fatura", itens: bruto.map(x => {
+  IMP = { cartaoId, arquivo: file.name, modo: "fatura", futuras: true, itens: bruto.map(x => {
     const pm = /(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/.exec(x.parc || "") || /(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/.exec(x.nome), parcela = pm && Number(pm[1]) <= Number(pm[2]) && Number(pm[2]) > 1 ? [Number(pm[1]), Number(pm[2])] : null;
     const credito = compraNeg ? x.valor > 0 : x.valor < 0, valor = Math.abs(x.valor), importId = x.fit || `${x.data}|${valor}|${norm(x.nome)}${parcela ? "|" + parcela.join("/") : ""}`, h = hist.get(norm(x.nome));
-    const dup = doCartao.some(l => l.importId === importId || ((l.dataCompra || l.data) === x.data && l.valor === valor && norm(l.descOrig || l.descricao) === norm(x.nome)));
-    const talvez = !dup && !credito && doCartao.some(l => (l.dataCompra || l.data) === x.data && l.valor === valor);
-    return { on: !credito && !dup && !talvez, credito, dup, talvez, parcela, pA: parcela ? parcela[0] : "", pT: parcela ? parcela[1] : "", obs: x.obs || "", data: x.data, valor, descOrig: x.nome, nome: h?.descricao || x.nome, categoriaId: h?.categoriaId || "", subgrupo: h?.subgrupo || "", pessoaId: h?.pessoaId || "", importId };
+    const prev = parcela ? doCartao.find(l => l.projetada && l.parcela === parcela[0] && l.parcelas === parcela[1] && baseNome(l.descOrig || l.descricao) === baseNome(x.nome) && Math.abs(l.valor - valor) <= 1) : null;
+    const dup = !prev && doCartao.some(l => l.importId === importId || ((l.dataCompra || l.data) === x.data && l.valor === valor && norm(l.descOrig || l.descricao) === norm(x.nome)));
+    const talvez = !dup && !prev && !credito && doCartao.some(l => (l.dataCompra || l.data) === x.data && l.valor === valor && !(parcela && l.parcela && l.parcela !== parcela[0]));
+    return { on: !credito && !dup && !talvez, credito, dup, prev: prev?.id || "", talvez, parcela, pA: parcela ? parcela[0] : "", pT: parcela ? parcela[1] : "", obs: x.obs || "", data: x.data, valor, descOrig: x.nome, nome: h?.descricao || x.nome, categoriaId: h?.categoriaId || "", subgrupo: h?.subgrupo || "", pessoaId: h?.pessoaId || "", importId };
   }).sort((a, b) => a.data.localeCompare(b.data)) };
   telaImportar();
 }
+/* ---------- Parcelas restantes ---------- */
+const baseNome = t => String(t || "").toLowerCase().replace(/\d{1,2}\s*(\/|de)\s*\d{1,2}/g, " ").replace(/\bparc(ela)?\.?\b/g, " ").replace(/\s+/g, " ").trim();
+const chaveSerie = l => [l.cartaoId || l.contaId || "", baseNome(l.descOrig || l.descricao), l.parcelas].join("|");
+// Parcelas que faltam de uma compra: da seguinte à atual até a última, uma por mês (as que já existem não se repetem)
+function faltantes(base, existentes) {
+  const tem = new Set(existentes.filter(x => chaveSerie(x) === chaveSerie(base)).map(x => x.parcela)), gid = base.grupoId || uid(), out = [];
+  for (let n = base.parcela + 1; n <= base.parcelas; n++) {
+    if (tem.has(n)) continue; const k = n - base.parcela, { id, importId, ...r } = base;
+    out.push({ ...r, descricao: String(r.descricao || "").replace(/\s*(parc(ela)?\.?\s*)?\d{1,2}\s*(\/|de)\s*\d{1,2}/i, "").trim() || r.descricao, grupoId: gid, parcela: n, parcelas: base.parcelas, recorrencia: "parcelada", projetada: true, efetivada: true, data: addMesData(base.data, k), ...(base.faturaRef ? { faturaRef: addMes(base.faturaRef, k) } : {}) });
+  }
+  return out;
+}
+function seriesPendentes() {
+  const m = new Map(); S.data.lancamentos.filter(l => l.tipo === "despesa" && l.parcelas > 1 && l.parcela >= 1 && l.parcela <= l.parcelas && !l.emprestimo).forEach(l => { const k = chaveSerie(l); (m.get(k) || m.set(k, []).get(k)).push(l); });
+  return [...m.values()].map(g => { const base = g.reduce((a, b) => b.parcela > a.parcela ? b : a); return { base, novos: faltantes(base, g) }; }).filter(x => x.novos.length).sort((a, b) => a.base.descricao.localeCompare(b.base.descricao));
+}
+let PAR = null;
+function abrirParcelas() {
+  PAR = seriesPendentes().map(x => ({ ...x, on: true }));
+  const nm = x => { const k = by("cartoes", x.base.cartaoId); return k ? "💳 " + k.nome : by("contas", x.base.contaId)?.nome || ""; };
+  $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal imp" style="max-width:640px"><h2>Gerar parcelas restantes</h2>
+    <div class="mut" style="margin-bottom:10px">${PAR.length ? "Compras parceladas que já estão lançadas, mas sem as parcelas dos próximos meses. Marque as que quer completar." : "✅ Todas as compras parceladas já têm as parcelas dos próximos meses."}</div>
+    <div class="implist">${PAR.map((x, i) => `<div class="impi" data-i="${i}"><label class="impck"><input type="checkbox" data-par="${i}" checked> <span>${esc(x.base.descricao)}</span></label><b class="neg">${brl(x.base.valor)}</b><span class="mut">${nm(x)} · ${x.base.parcela}/${x.base.parcelas} → +${x.novos.length} (até ${dataBR(x.novos[x.novos.length - 1].data).slice(3)})</span></div>`).join("")}</div>
+    <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Cancelar</button>${PAR.length ? `<button class="btn" data-act="parGerar">Criar parcelas</button>` : ""}</div></div></div>`;
+}
+document.addEventListener("input", e => { if (PAR && e.target.dataset.par != null) PAR[Number(e.target.dataset.par)].on = e.target.checked; });
 function impResumo() { const m = IMP.itens.filter(x => x.on); return `${m.length} de ${IMP.itens.length} marcadas · total ${brl(total(m))}`; }
 function telaImportar() {
   const c = by("cartoes", IMP.cartaoId), cats = optCats("despesa"), ps = [...S.data.pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), mes = `${MESES[Number(S.mes.slice(5)) - 1].toLowerCase()} de ${S.mes.slice(0, 4)}`;
@@ -1660,10 +1695,10 @@ function telaImportar() {
   $("#modal").innerHTML = `<div class="ov"><div class="modal imp"><h2>Importar para ${esc(c.nome)}</h2>
     <div class="sum" style="justify-content:flex-start;margin:0 0 10px">${esc(IMP.arquivo)} · <b id="impres">${impResumo()}</b></div>
     <div class="f"><label for="impmodo">Em qual fatura lançar</label><select id="impmodo" data-impg="modo"><option value="fatura" ${IMP.modo === "fatura" ? "selected" : ""}>Tudo na fatura de ${mes} (mês selecionado no topo)</option><option value="data" ${IMP.modo === "data" ? "selected" : ""}>Pela data de cada compra e o dia de fechamento</option></select></div>
-    <div class="impbar"><span>Aplicar às marcadas:</span>${selCat("", 'id="impcat"')}<input id="impsub" type="text" placeholder="Subgrupo" autocomplete="off">${S.data.veiculos.length ? `<select id="impvei"><option value="">🚗 Veículo…</option>${S.data.veiculos.map(v => `<option value="${v.id}">${esc(v.nome)}</option>`).join("")}</select>` : ""}<button class="btn ghost" data-act="impAplicar">Aplicar</button><button class="btn ghost" data-act="impTodas">Marcar / desmarcar todas</button></div>
+    <label class="impck" style="margin:0 0 10px;display:flex;gap:8px;align-items:center"><input type="checkbox" data-impfut ${IMP.futuras ? "checked" : ""}> <span>Lançar também as parcelas restantes das compras parceladas (nas próximas faturas)</span></label><div class="impbar"><span>Aplicar às marcadas:</span>${selCat("", 'id="impcat"')}<input id="impsub" type="text" placeholder="Subgrupo" autocomplete="off">${S.data.veiculos.length ? `<select id="impvei"><option value="">🚗 Veículo…</option>${S.data.veiculos.map(v => `<option value="${v.id}">${esc(v.nome)}</option>`).join("")}</select>` : ""}<button class="btn ghost" data-act="impAplicar">Aplicar</button><button class="btn ghost" data-act="impTodas">Marcar / desmarcar todas</button></div>
     <div class="implist">${IMP.itens.map((x, i) => `<div class="impi ${x.on ? "" : "off"}" data-i="${i}">
       <label class="impck"><input type="checkbox" data-imp="on" ${x.on ? "checked" : ""}> <span>${dataBR(x.data)}</span></label><b class="${x.credito ? "pos" : "neg"}">${brl(x.valor)}</b>
-      ${x.dup ? '<span class="tag" style="background:#f29a38">Já importada</span>' : x.talvez ? '<span class="tag" style="background:#f29a38" title="Já existe neste cartão uma compra com a mesma data e o mesmo valor">Possível repetida</span>' : x.credito ? '<span class="tag" style="background:#2e9e5b">Pagamento / estorno</span>' : "<span></span>"}
+      ${x.prev ? '<span class="tag" style="background:#5b6ee0" title="Esta parcela já estava prevista; será confirmada com o valor da fatura">Parcela prevista</span>' : x.dup ? '<span class="tag" style="background:#f29a38">Já importada</span>' : x.talvez ? '<span class="tag" style="background:#f29a38" title="Já existe neste cartão uma compra com a mesma data e o mesmo valor">Possível repetida</span>' : x.credito ? '<span class="tag" style="background:#2e9e5b">Pagamento / estorno</span>' : "<span></span>"}
       <input class="impn" type="text" data-imp="nome" value="${esc(x.nome)}" title="Nome original: ${esc(x.descOrig)}" autocomplete="off">
       <div class="impp"><span>Parcela</span><input type="number" inputmode="numeric" min="1" data-imp="pA" value="${esc(x.pA)}" placeholder="nº" aria-label="Número da parcela"><span>de</span><input type="number" inputmode="numeric" min="1" data-imp="pT" value="${esc(x.pT)}" placeholder="total" aria-label="Total de parcelas">${x.obs ? `<small>${esc(x.obs)}</small>` : ""}</div>
       ${selCat(x.categoriaId, 'data-imp="categoriaId"')}<input type="text" data-imp="subgrupo" value="${esc(x.subgrupo)}" placeholder="Subgrupo" autocomplete="off">
@@ -1672,6 +1707,7 @@ function telaImportar() {
 }
 document.addEventListener("input", e => {
   if (!IMP) return; const t = e.target;
+  if (t.dataset.impfut != null) { IMP.futuras = t.checked; return; }
   if (t.dataset.impg) { IMP[t.dataset.impg] = t.value; return; }
   const k = t.dataset.imp, row = t.closest(".impi"); if (!k || !row) return;
   const x = IMP.itens[Number(row.dataset.i)]; x[k] = t.type === "checkbox" ? t.checked : t.value;
