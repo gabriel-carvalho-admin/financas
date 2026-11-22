@@ -190,11 +190,14 @@ function resumoConta(c, ym, ini0 = `${ym}-01`, fim = `${ym}-31`) {
   const mv = movimentos(c.id);
   const soma = f => r2(mv.filter(f).reduce((s, x) => s + x.v, 0));
   const noMes = x => x.d >= ini0 && x.d <= fim;
-  const inicial = r2((c.saldoInicial || 0) + soma(x => x.ok && x.d < ini0));
+  // o fechamento do mês vira o saldo inicial do mês seguinte (âncora: o valor informado em cada conta)
+  const ancora = lim => { let a = null; for (const f of S.data.config) if (String(f.id).startsWith("fech-") && f.contas?.[c.id]) { const fd = `${f.mes}-${pad(ultimoDia(f.mes))}`; if (fd < lim && (!a || fd > a.fd)) a = { fd, real: f.contas[c.id].real }; } return a; };
+  const a0 = ancora(ini0), a1 = a0;
+  const inicial = a0 ? r2(a0.real + soma(x => x.ok && x.d > a0.fd && x.d < ini0)) : r2((c.saldoInicial || 0) + soma(x => x.ok && x.d < ini0));
   const rec = soma(x => x.ok && noMes(x) && x.t === "r"), des = -soma(x => x.ok && noMes(x) && x.t === "d");
   const tc = soma(x => x.ok && noMes(x) && x.t === "tc"), td = -soma(x => x.ok && noMes(x) && x.t === "td");
   const saldo = r2(inicial + rec - des + tc - td);
-  const previsto = r2((c.saldoInicial || 0) + soma(x => x.d <= fim));
+  const previsto = a1 ? r2(a1.real + soma(x => x.d > a1.fd && x.d <= fim) + soma(x => !x.ok && x.d <= a1.fd)) : r2((c.saldoInicial || 0) + soma(x => x.d <= fim));
   return { inicial, rec, des, tc, td, saldo, previsto };
 }
 const addDias = (d, n) => { const t = new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10) + n)); return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`; };
@@ -1002,29 +1005,27 @@ function formFechamento(ym) {
   if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
   const ex = fechDe(ym), cs = contasOrd(), fim = `${ym}-${pad(ultimoDia(ym))}`, app = Object.fromEntries(cs.map(c => [c.id, resumoConta(c, ym).saldo]));
   openForm({ title: `Fechamento de ${NOME_MES(ym)}`,
-    values: { ...Object.fromEntries(cs.map(c => ["c_" + c.id, ex?.contas?.[c.id] ? moneyIn(ex.contas[c.id].real) || "0,00" : ""])), ajustar: false },
+    values: Object.fromEntries(cs.map(c => ["c_" + c.id, ex?.contas?.[c.id] ? moneyIn(ex.contas[c.id].real) || "0,00" : ""])),
     fields: [{ type: "titulo", label: "Quanto realmente sobrou em cada conta? (confira no banco ou na carteira)" },
       ...cs.map(c => ({ k: "c_" + c.id, label: `${c.nome} — o app calcula ${brl(app[c.id])}`, type: "money" })),
-      { k: "ajustar", label: "Ajustar o saldo no app: criar um lançamento de ajuste onde houver diferença", type: "check" }],
+      { type: "titulo", label: "Ao salvar, o valor informado de cada conta vira o saldo inicial do mês seguinte." }],
     onSave: async v => {
       const contas = {}; let n = 0;
       for (const c of cs) { const raw = String(v["c_" + c.id] ?? "").trim(); if (raw === "") continue; const real = parseMoney(raw); contas[c.id] = { nome: c.nome, app: app[c.id], real, dif: r2(real - app[c.id]) }; n++; }
       if (!n) { toast("Informe o valor de pelo menos uma conta."); return false; }
-      if (v.ajustar && !ex?.ajustou) for (const c of cs) { const x = contas[c.id]; if (!x || Math.abs(x.dif) < 0.005) continue;
-        await store.add("lancamentos", { tipo: x.dif > 0 ? "receita" : "despesa", descricao: `Ajuste de fechamento de ${NOME_MES(ym)}`, valor: Math.abs(x.dif), data: fim, vencimento: fim, efetivada: true, contaId: c.id, cartaoId: "", categoriaId: "", subgrupo: "", recorrencia: "variavel", pessoaId: "", contaDestinoId: "" }); }
-      await store.set("config", "fech-" + ym, { mes: ym, feitoEm: hoje(), contas, total: r2(Object.values(contas).reduce((a, x) => a + x.real, 0)), ajustou: !!(v.ajustar || ex?.ajustou) });
+      await store.set("config", "fech-" + ym, { mes: ym, feitoEm: hoje(), contas, total: r2(Object.values(contas).reduce((a, x) => a + x.real, 0)) });
       toast("Fechamento salvo."); },
     onDelete: ex ? () => store.del("config", "fech-" + ym) : null, delLabel: "Apagar este fechamento" });
 }
 function verFechamento(ym) {
   const f = fechDe(ym); if (!f) return;
-  $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:520px"><h2>Fechamento de ${NOME_MES(ym)}</h2><div class="mut" style="margin-bottom:8px">Feito em ${dataBR(f.feitoEm)}${f.ajustou ? " · saldos ajustados no app" : ""}</div>
+  $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:520px"><h2>Fechamento de ${NOME_MES(ym)}</h2><div class="mut" style="margin-bottom:8px">Feito em ${dataBR(f.feitoEm)}</div>
     <table><thead><tr><th>Conta</th><th>App</th><th>Informado</th><th>Diferença</th></tr></thead><tbody>${Object.values(f.contas).map(x => `<tr><td>${esc(x.nome)}</td><td>${brl(x.app)}</td><td><b>${brl(x.real)}</b></td><td class="${Math.abs(x.dif) < 0.005 ? "mut" : x.dif > 0 ? "pos" : "neg"}">${Math.abs(x.dif) < 0.005 ? "—" : brl(x.dif)}</td></tr>`).join("")}</tbody>
     <tfoot><tr><td>Total</td><td>${brl(r2(Object.values(f.contas).reduce((a, x) => a + x.app, 0)))}</td><td><b>${brl(f.total)}</b></td><td></td></tr></tfoot></table>
     <div class="acts"><button class="btn ghost" data-act="fechar-mes" data-ym="${ym}">Editar</button><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`;
 }
 V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px;margin-bottom:14px"><h3>Fechamento do mês</h3>
-  <div class="mut" style="font-size:13px;margin:0 0 8px">Todo último dia do mês, anote quanto sobrou em cada conta (carteira, contas correntes…) e compare com o que o app calculou. O app avisa no Início no último dia do mês.</div>
+  <div class="mut" style="font-size:13px;margin:0 0 8px">Todo último dia do mês, anote quanto sobrou em cada conta (carteira, contas correntes…) e compare com o que o app calculou. O valor informado vira o saldo inicial do mês seguinte. O app avisa no Início no último dia do mês.</div>
   <div class="row" data-act="fechar-mes" data-ym="${S.mes}"><div class="tx"><div>Fazer o fechamento de ${NOME_MES(S.mes)}</div><small>${fechDe(S.mes) ? "Já feito — toque para editar" : "Ainda não feito"}</small></div><span class="mut">›</span></div>
   ${fechamentos().map(f => `<div class="row" data-act="verFech" data-ym="${f.mes}"><div class="tx"><div>${NOME_MES(f.mes)}</div><small>Total informado ${brl(f.total)} · ${Object.keys(f.contas).length} ${Object.keys(f.contas).length === 1 ? "conta" : "contas"}</small></div><span class="mut">ver ›</span></div>`).join("")}</div>
 <div class="card" style="max-width:520px">
