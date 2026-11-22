@@ -306,4 +306,4 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 
 .bar.wide{grid-template-columns:minmax(110px,40%) 1fr auto}.bar.wide .n{text-align:left}
 
-td.lkc{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}td.lkc:hover{background:var(--soft)}
+td.lkc{cursor:pointer}td.lkc:hover{background:var(--soft)}
