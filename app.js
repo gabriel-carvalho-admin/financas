@@ -1050,7 +1050,7 @@ function diagnostico() {
   add("erro", "Receita lançada em cartão de crédito", L.filter(l => l.tipo === "receita" && l.cartaoId && !l.reembolso).map(desc));
   add("erro", "Transferência com origem e destino iguais", L.filter(l => l.tipo === "transferencia" && l.contaId === l.contaDestinoId).map(desc));
   add("erro", "Categoria que não existe mais", L.filter(l => l.categoriaId && l.categoriaId !== "__emp" && !cc.has(l.categoriaId)).map(desc));
-  add("aviso", "Despesas e receitas sem categoria", L.filter(l => l.tipo !== "transferencia" && !l.emprestimo && !l.reembolso && !l.categoriaId && l.data.slice(0, 7) >= ini).map(desc));
+  add("aviso", "Despesas e receitas sem categoria", L.filter(l => l.tipo !== "transferencia" && !l.emprestimo && !l.reembolso && !l.categoriaId && mesComp(l) >= ini).map(desc));
   const mk = new Map(); L.forEach(l => { const k = [l.tipo, l.data, l.valor, nrm(l.descricao), l.contaId || l.cartaoId, l.parcela || ""].join("|"); (mk.get(k) || mk.set(k, []).get(k)).push(l); });
   add("aviso", "Possíveis lançamentos duplicados (mesma data, valor, descrição e conta)", [...mk.values()].filter(a => a.length > 1).map(a => `${a.length}× ${desc(a[0])}`));
   add("aviso", "Parcela maior que o total de parcelas", L.filter(l => l.parcelas && l.parcela > l.parcelas).map(desc));
