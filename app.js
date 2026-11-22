@@ -210,7 +210,7 @@ function periodo(desl = 0) {
   if (p === "ano") { const y = Number(S.mes.slice(0, 4)) + desl; return { ini: `${y}-01-01`, fim: `${y}-12-31`, label: `Ano de ${y}`, nome: "no ano", ant: "ano anterior" }; }
   const ym = addMes(S.mes, desl); return { ini: `${ym}-01`, fim: `${ym}-31`, label: `${MESES[Number(ym.slice(5)) - 1]} ${ym.slice(0, 4)}`, nome: "no mês", ant: "mês anterior" };
 }
-const despRank = (P, desp = noPer("despesa", P), key = "rkFat") => { let f = false; try { f = localStorage.getItem(key) === "1"; } catch {} if (!f) return desp; const a = P.ini.slice(0, 7), b = P.fim.slice(0, 7);
+const despRank = (P, desp = noPer("despesa", P), key = "rkFat", force = false) => { let f = force; try { f = f || localStorage.getItem(key) === "1"; } catch {} if (!f) return desp; const a = P.ini.slice(0, 7), b = P.fim.slice(0, 7);
   return [...desp.filter(l => !l.cartaoId), ...S.data.lancamentos.filter(l => l.tipo === "despesa" && l.cartaoId && fatMes(l) >= a && fatMes(l) <= b)]; };
 const rkFatOn = () => { try { return localStorage.getItem("rkFat") === "1"; } catch { return false; } };
 const noPer = (tipo, P) => S.data.lancamentos.filter(l => l.tipo === tipo && l.data >= P.ini && l.data <= P.fim);
@@ -334,6 +334,7 @@ V.inicio = () => {
   const desp = noPer("despesa", P), rec = noPer("receita", P), ef = a => total(a.filter(l => l.efetivada)), bal = r2(total(rec) - total(desp));
   const fat = faturasNoPer(P), fatAnt = faturasNoPer(PA), variacao = (a, b) => b > 0 ? `<span class="chip">${a >= b ? "↗" : "↘"} ${Math.abs((a - b) / b * 100).toFixed(0)}% vs. ${P.ant}</span>` : "";
   const rkD = despRank(P, desp), rk = porCategoria(rkD);
+  const despF = total(despRank(P, desp, "", true)), despFA = total(despRank(PA, noPer("despesa", PA), "", true)), balF = r2(total(rec) - despF);
   const rc = k => total(desp.filter(l => (l.recorrencia || "variavel") === k));
   const stat = (act, cor, sym, v, lbl, extra = "", c = "") => `<div class="card stat clk" ${act}><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small>${extra}</div></div>`;
   const prev = v => `<small class="mut">Previsto ${brl(v)}</small>`;
@@ -359,8 +360,8 @@ V.inicio = () => {
     <div class="stats s5">
       ${stat('data-act="nav" data-v="contas"', "#3b7ddd", "🏦", T("saldo"), "Saldo nas contas", prev(T("previsto")), cls(T("saldo")))}
       ${stat('data-act="det" data-k="rec"', "#2e9e5b", "＋", T("rec"), "Receitas recebidas", prev(total(rec)) + variacao(total(rec), total(noPer("receita", PA))), "pos")}
-      ${stat('data-act="det" data-k="des"', "#d9483b", "－", T("des"), "Despesas pagas (saídas das contas)", prev(total(desp)) + variacao(total(desp), total(noPer("despesa", PA))), "neg")}
-      ${stat('data-act="det" data-k="bal"', "#f5b335", "⇅", r2(T("rec") - T("des")), "Balanço", prev(bal), cls(T("rec") - T("des")))}
+      ${stat('data-act="det" data-k="des"', "#d9483b", "－", T("des"), "Despesas pagas (saídas das contas)", prev(despF) + variacao(despF, despFA), "neg")}
+      ${stat('data-act="det" data-k="bal"', "#f5b335", "⇅", r2(T("rec") - T("des")), "Balanço", prev(balF), cls(T("rec") - T("des")))}
       ${stat('data-act="nav" data-v="cartoes"', "#5b6ee0", "💳", fat, S.per === "mes" ? "Total faturas" : "Faturas que vencem no período", variacao(fat, fatAnt))}
     </div>
     <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true, 'det" data-k="conta', P)}</div>
