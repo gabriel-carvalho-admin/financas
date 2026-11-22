@@ -228,7 +228,7 @@ const ini = n => (n || "?").trim().slice(0, 2).toUpperCase();
 function barras(rows, clic) {
   if (!rows.length) return '<div class="empty">Sem dados neste mês.</div>';
   const max = rows[0].v || 1;
-  return `<div class="bars">${rows.slice(0, 8).map(r => `<div class="bar ${clic ? "clk" : ""}" ${clic ? `data-act="det" data-k="cat" data-id="${esc(r.id)}"` : ""}><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div></div>`).join("")}</div>`;
+  return `<div class="bars">${rows.slice(0, 8).map(r => `<div class="bar ${clic ? "clk" : ""}" ${clic ? `data-act="det" data-k="cat" data-id="${esc(r.id)}"` : ""}><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div><b class="bv">${brl(r.v)}</b></div>`).join("")}</div>`;
 }
 function barrasCartoes(rows) {
   const max = rows[0]?.v || 1;
