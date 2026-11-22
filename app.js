@@ -337,7 +337,7 @@ V.inicio = () => {
   const pend = S.data.lancamentos.filter(l => !l.efetivada && !l.cartaoId && l.data <= P.fim).sort((a, b) => a.data.localeCompare(b.data));
   const devem = S.data.pessoas.map(p => ({ p, ...contaPessoa(p.id) })).filter(x => x.deve > 0.005).sort((a, b) => b.deve - a.deve);
   const objs = [...S.data.objetivos].sort((a, b) => (a.prazo || "9999").localeCompare(b.prazo || "9999"));
-  return `${avisoFixas()}<div class="pertop"><div class="seg per">${[["dia", "Diário"], ["semana", "Semanal"], ["mes", "Mensal"], ["ano", "Anual"]].map(([k, n]) => `<button class="${S.per === k ? "on" : ""}" data-act="per" data-v="${k}">${n}</button>`).join("")}</div><span class="mut">Resumo ${P.nome}: <b>${P.label}</b> · toque nos quadros para ver os detalhes</span></div>
+  return `${avisoFechamento()}${avisoFixas()}<div class="pertop"><div class="seg per">${[["dia", "Diário"], ["semana", "Semanal"], ["mes", "Mensal"], ["ano", "Anual"]].map(([k, n]) => `<button class="${S.per === k ? "on" : ""}" data-act="per" data-v="${k}">${n}</button>`).join("")}</div><span class="mut">Resumo ${P.nome}: <b>${P.label}</b> · toque nos quadros para ver os detalhes</span></div>
   <div class="grid dash">
   <div class="card clk" data-act="det" data-k="saldo"><div class="tl">
     <div><span class="v">${brl(T("inicial"))}</span><small>Inicial (antes do período)</small></div>
@@ -988,7 +988,46 @@ V.objetivos = () => {
       <div class="dash-l"></div><div class="ft" style="margin-top:0"><span class="tag" style="background:${falta <= 0 ? "#2e9e5b" : "#3b7ddd"}">${falta <= 0 ? "Concluído" : "Em andamento"}</span><span><button class="link" data-act="objMov" data-id="${o.id}" data-s="-1">Retirar</button> &nbsp; <button class="link" data-act="objMov" data-id="${o.id}" data-s="1">Guardar</button></span></div></div>`; }).join("")}</div>
     <div class="sum">Total guardado: <b class="pos">${brl(total(os.map(o => ({ valor: o.guardado || 0 }))))}</b> de ${brl(total(os.map(o => ({ valor: o.alvo || 0 }))))}</div>` : '<div class="card empty">Nenhum objetivo ainda. Crie um para acompanhar quanto falta (viagem, reserva de emergência, carro…).</div>'}`;
 };
-V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px">
+/* ---------- fechamento do mês ---------- */
+const fechamentos = () => S.data.config.filter(x => String(x.id).startsWith("fech-")).sort((a, b) => b.id.localeCompare(a.id));
+const fechDe = ym => by("config", "fech-" + ym);
+const NOME_MES = ym => `${MESES[Number(ym.slice(5)) - 1]} ${ym.slice(0, 4)}`;
+function avisoFechamento() {
+  const h = hoje(), ym = ymOf(h), dia = Number(h.slice(8)), ant = addMes(ym, -1);
+  let alvo = null; if (dia === ultimoDia(ym) && !fechDe(ym)) alvo = ym; else if (dia <= 7 && !fechDe(ant) && S.data.contas.length) alvo = ant;
+  if (!alvo) return "";
+  return `<div class="aviso ${alvo === ant ? "ruim" : ""}" data-act="fechar-mes" data-ym="${alvo}"><b>${alvo === ant ? "⚠" : "🔔"} Fechamento de ${NOME_MES(alvo)}:</b> ${alvo === ant ? "ainda não foi feito." : "hoje é o último dia do mês."} Toque para conferir quanto sobrou em cada conta.</div>`;
+}
+function formFechamento(ym) {
+  if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
+  const ex = fechDe(ym), cs = contasOrd(), fim = `${ym}-${pad(ultimoDia(ym))}`, app = Object.fromEntries(cs.map(c => [c.id, resumoConta(c, ym).saldo]));
+  openForm({ title: `Fechamento de ${NOME_MES(ym)}`,
+    values: { ...Object.fromEntries(cs.map(c => ["c_" + c.id, ex?.contas?.[c.id] ? moneyIn(ex.contas[c.id].real) || "0,00" : ""])), ajustar: false },
+    fields: [{ type: "titulo", label: "Quanto realmente sobrou em cada conta? (confira no banco ou na carteira)" },
+      ...cs.map(c => ({ k: "c_" + c.id, label: `${c.nome} — o app calcula ${brl(app[c.id])}`, type: "money" })),
+      { k: "ajustar", label: "Ajustar o saldo no app: criar um lançamento de ajuste onde houver diferença", type: "check" }],
+    onSave: async v => {
+      const contas = {}; let n = 0;
+      for (const c of cs) { const raw = String(v["c_" + c.id] ?? "").trim(); if (raw === "") continue; const real = parseMoney(raw); contas[c.id] = { nome: c.nome, app: app[c.id], real, dif: r2(real - app[c.id]) }; n++; }
+      if (!n) { toast("Informe o valor de pelo menos uma conta."); return false; }
+      if (v.ajustar && !ex?.ajustou) for (const c of cs) { const x = contas[c.id]; if (!x || Math.abs(x.dif) < 0.005) continue;
+        await store.add("lancamentos", { tipo: x.dif > 0 ? "receita" : "despesa", descricao: `Ajuste de fechamento de ${NOME_MES(ym)}`, valor: Math.abs(x.dif), data: fim, vencimento: fim, efetivada: true, contaId: c.id, cartaoId: "", categoriaId: "", subgrupo: "", recorrencia: "variavel", pessoaId: "", contaDestinoId: "" }); }
+      await store.set("config", "fech-" + ym, { mes: ym, feitoEm: hoje(), contas, total: r2(Object.values(contas).reduce((a, x) => a + x.real, 0)), ajustou: !!(v.ajustar || ex?.ajustou) });
+      toast("Fechamento salvo."); },
+    onDelete: ex ? () => store.del("config", "fech-" + ym) : null, delLabel: "Apagar este fechamento" });
+}
+function verFechamento(ym) {
+  const f = fechDe(ym); if (!f) return;
+  $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:520px"><h2>Fechamento de ${NOME_MES(ym)}</h2><div class="mut" style="margin-bottom:8px">Feito em ${dataBR(f.feitoEm)}${f.ajustou ? " · saldos ajustados no app" : ""}</div>
+    <table><thead><tr><th>Conta</th><th>App</th><th>Informado</th><th>Diferença</th></tr></thead><tbody>${Object.values(f.contas).map(x => `<tr><td>${esc(x.nome)}</td><td>${brl(x.app)}</td><td><b>${brl(x.real)}</b></td><td class="${Math.abs(x.dif) < 0.005 ? "mut" : x.dif > 0 ? "pos" : "neg"}">${Math.abs(x.dif) < 0.005 ? "—" : brl(x.dif)}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td>Total</td><td>${brl(r2(Object.values(f.contas).reduce((a, x) => a + x.app, 0)))}</td><td><b>${brl(f.total)}</b></td><td></td></tr></tfoot></table>
+    <div class="acts"><button class="btn ghost" data-act="fechar-mes" data-ym="${ym}">Editar</button><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`;
+}
+V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px;margin-bottom:14px"><h3>Fechamento do mês</h3>
+  <div class="mut" style="font-size:13px;margin:0 0 8px">Todo último dia do mês, anote quanto sobrou em cada conta (carteira, contas correntes…) e compare com o que o app calculou. O app avisa no Início no último dia do mês.</div>
+  <div class="row" data-act="fechar-mes" data-ym="${S.mes}"><div class="tx"><div>Fazer o fechamento de ${NOME_MES(S.mes)}</div><small>${fechDe(S.mes) ? "Já feito — toque para editar" : "Ainda não feito"}</small></div><span class="mut">›</span></div>
+  ${fechamentos().map(f => `<div class="row" data-act="verFech" data-ym="${f.mes}"><div class="tx"><div>${NOME_MES(f.mes)}</div><small>Total informado ${brl(f.total)} · ${Object.keys(f.contas).length} ${Object.keys(f.contas).length === 1 ? "conta" : "contas"}</small></div><span class="mut">ver ›</span></div>`).join("")}</div>
+<div class="card" style="max-width:520px">
   <div class="row" data-act="dark"><div class="tx">Tema escuro</div><span class="ck ${document.documentElement.classList.contains("dark") ? "on" : ""}">✓</span></div>
   <div class="row" data-act="csv"><div class="tx"><div>Exportar lançamentos (CSV)</div><small>Abre no Excel ou Google Planilhas</small></div></div>
   <div class="row" data-act="sair"><div class="tx"><div class="neg">Sair</div><small>${esc(S.demo ? "Modo demonstração — nada é salvo" : S.user?.email || "")}</small></div></div></div>`;
@@ -1422,6 +1461,7 @@ const A = {
     ${[...ok.map(l => ({ data: l.data, h: linha(l) })), ...fats.map(x => ({ data: x.p.data, h: `<div class="row" data-act="irCartao" data-id="${x.k.id}">${av("💳", x.k.cor)}<div class="tx"><div>Pagamento da fatura ${esc(x.k.nome)}</div><small>Fatura de ${MESES[Number(x.ym.slice(5)) - 1].toLowerCase()} ${x.ym.slice(0, 4)}</small></div><b class="neg">${brl(x.p.valor)}</b></div>` }))].sort((a, b) => b.data.localeCompare(a.data)).map(x => `<div class="day" style="padding:8px 4px 0">${dataBR(x.data)}</div>${x.h}`).join("") || '<div class="empty">Nenhum lançamento efetivado neste período.</div>'}
     ${prev.length ? `<div class="day">Previstos (ainda não ${rec ? "recebidos" : "pagos"})</div>${prev.sort((a, b) => a.data.localeCompare(b.data)).map(l => linha(l)).join("")}` : ""}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
+  "fechar-mes": d => formFechamento(d.ym), verFech: d => verFechamento(d.ym),
   edPainel: () => { S.edPainel = !S.edPainel; render(); },
   wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
   wReset: () => store.set("config", "painel", { ordem: [], w: {}, h: {}, oculto: [] }),
