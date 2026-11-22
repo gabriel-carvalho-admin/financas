@@ -360,7 +360,7 @@ V.inicio = () => {
       ${stat('data-act="det" data-k="bal"', "#f5b335", "⇅", r2(ef(rec) - ef(desp)), "Balanço", prev(bal), cls(ef(rec) - ef(desp)))}
       ${stat('data-act="nav" data-v="cartoes"', "#5b6ee0", "💳", fat, S.per === "mes" ? "Total faturas" : "Faturas que vencem no período", variacao(fat, fatAnt))}
     </div>
-    <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true, 'det" data-k="conta')}</div>
+    <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true, 'det" data-k="conta', P)}</div>
     ${cardAnalise(P)}
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start">
       <div class="card"><h3>Evolução das despesas <small class="mut" style="font-weight:400">últimos 7 dias</small></h3>${evolucao7()}</div>
@@ -372,11 +372,11 @@ V.inicio = () => {
     </div>
   </div></div>`;
 };
-function tabContas(rs, curto, act = "editConta") {
+function tabContas(rs, curto, act = "editConta", rng = { ini: `${S.mes}-01`, fim: `${S.mes}-31` }) {
   if (!rs.length) return '<div class="empty">Nenhuma conta cadastrada.</div>';
-  const T = k => r2(rs.reduce((s, x) => s + x[k], 0)), td = (v, c = "") => `<td class="${c}">${brl(v)}</td>`;
+  const T = k => r2(rs.reduce((s, x) => s + x[k], 0)), td = (v, c = "", a = "") => `<td class="${c}" ${a}>${brl(v)}</td>`, lk = (x, t) => `data-act="detConta" data-id="${x.c.id}" data-t="${t}" data-ini="${rng.ini}" data-fim="${rng.fim}" title="Toque para ver os lançamentos"`;
   return `<div style="overflow:auto"><table><thead><tr><th>Descrição</th>${curto ? "" : '<th class="hs">Saldo inicial</th>'}<th>Receitas</th><th>Despesas</th>${curto ? "" : '<th class="hs">Transf. créd.</th><th class="hs">Transf. déb.</th>'}<th>Saldo</th><th class="hs">Previsto</th></tr></thead>
-  <tbody>${rs.map(x => `<tr class="click" data-act="${act}" data-id="${x.c.id}"><td><div class="who">${curto ? "" : '<span class="grip" data-act="nada" title="Arrastar para reordenar" aria-label="Arrastar para reordenar">⠿</span>'}${av(ini(x.c.nome), x.c.cor)}${esc(x.c.nome)}</div></td>${curto ? "" : td(x.inicial, "hs " + cls(x.inicial))}${td(x.rec)}${td(x.des)}${curto ? "" : td(x.tc, "hs") + td(x.td, "hs")}${td(x.saldo, "b " + cls(x.saldo))}${td(x.previsto, "hs " + cls(x.previsto))}</tr>`).join("")}</tbody>
+  <tbody>${rs.map(x => `<tr class="click" data-act="${act}" data-id="${x.c.id}"><td><div class="who">${curto ? "" : '<span class="grip" data-act="nada" title="Arrastar para reordenar" aria-label="Arrastar para reordenar">⠿</span>'}${av(ini(x.c.nome), x.c.cor)}${esc(x.c.nome)}</div></td>${curto ? "" : td(x.inicial, "hs " + cls(x.inicial))}${td(x.rec, "lkc", lk(x, "rec"))}${td(x.des, "lkc", lk(x, "des"))}${curto ? "" : td(x.tc, "hs") + td(x.td, "hs")}${td(x.saldo, "b " + cls(x.saldo))}${td(x.previsto, "hs " + cls(x.previsto))}</tr>`).join("")}</tbody>
   <tfoot><tr><td>Total</td>${curto ? "" : td(T("inicial"), "hs")}${td(T("rec"))}${td(T("des"))}${curto ? "" : td(T("tc"), "hs") + td(T("td"), "hs")}${td(T("saldo"))}${td(T("previsto"), "hs")}</tr></tfoot></table></div>`;
 }
 V.contas = () => `<div class="tools"><h2 style="flex:1">Contas</h2><button class="btn" data-act="editConta">Nova conta</button></div>
@@ -1412,6 +1412,16 @@ const A = {
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   anModo: d => { try { localStorage.setItem("anFat", d.v); } catch {} render(); },
   rkModo: d => { try { localStorage.setItem("rkFat", d.v); } catch {} render(); },
+  detConta: d => { const c = by("contas", d.id), rec = d.t === "rec", ini = d.ini, fim = d.fim, tp = rec ? "receita" : "despesa";
+    const noP = l => !l.cartaoId && l.tipo === tp && l.contaId === c.id && l.data >= ini && l.data <= fim, ls = S.data.lancamentos.filter(noP), ok = ls.filter(l => l.efetivada), prev = ls.filter(l => !l.efetivada);
+    const fats = rec ? [] : S.data.cartoes.flatMap(k => Object.entries(k.pagas || {}).filter(([, p]) => p.contaId === c.id && p.data >= ini && p.data <= fim).map(([ym, p]) => ({ k, ym, p })));
+    const tot = r2(total(ok) + fats.reduce((a, x) => a + x.p.valor, 0)), rk = porCategoria(ok);
+    $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:540px"><h2>${esc(c.nome)} — ${rec ? "Receitas" : "Despesas"}</h2><div class="mut" style="margin-bottom:8px">${ini.slice(0, 7) === fim.slice(0, 7) && ini.slice(8) === "01" ? MESES[Number(ini.slice(5, 7)) - 1] + " " + ini.slice(0, 4) : ini === fim ? dataBR(ini) : dataBR(ini) + " a " + dataBR(fim)}</div>
+    <div class="sum" style="justify-content:flex-start;margin:0 0 10px"><span>${ok.length + fats.length} ${ok.length + fats.length === 1 ? "lançamento" : "lançamentos"}</span><span>total ${rec ? "recebido" : "pago"} <b class="${rec ? "pos" : "neg"}">${brl(tot)}</b></span>${prev.length ? `<span>previsto: <b>${brl(total(prev))}</b></span>` : ""}</div>
+    ${rk.length > 1 ? `<div style="margin-bottom:8px">${barras(rk)}</div>` : ""}
+    ${[...ok.map(l => ({ data: l.data, h: linha(l) })), ...fats.map(x => ({ data: x.p.data, h: `<div class="row" data-act="irCartao" data-id="${x.k.id}">${av("💳", x.k.cor)}<div class="tx"><div>Pagamento da fatura ${esc(x.k.nome)}</div><small>Fatura de ${MESES[Number(x.ym.slice(5)) - 1].toLowerCase()} ${x.ym.slice(0, 4)}</small></div><b class="neg">${brl(x.p.valor)}</b></div>` }))].sort((a, b) => b.data.localeCompare(a.data)).map(x => `<div class="day" style="padding:8px 4px 0">${dataBR(x.data)}</div>${x.h}`).join("") || '<div class="empty">Nenhum lançamento efetivado neste período.</div>'}
+    ${prev.length ? `<div class="day">Previstos (ainda não ${rec ? "recebidos" : "pagos"})</div>${prev.sort((a, b) => a.data.localeCompare(b.data)).map(l => linha(l)).join("")}` : ""}
+    <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   edPainel: () => { S.edPainel = !S.edPainel; render(); },
   wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
   wReset: () => store.set("config", "painel", { ordem: [], w: {}, h: {}, oculto: [] }),
