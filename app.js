@@ -237,7 +237,9 @@ const ini = n => (n || "?").trim().slice(0, 2).toUpperCase();
 function barras(rows, clic) {
   if (!rows.length) return '<div class="empty">Sem dados neste mês.</div>';
   const max = rows[0].v || 1;
-  return `<div class="bars">${rows.slice(0, 8).map(r => `<div class="bar ${clic ? "clk" : ""}" ${clic ? `data-act="det" data-k="cat" data-id="${esc(r.id)}"` : ""}><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div><b class="bv">${brl(r.v)}</b></div>`).join("")}</div>`;
+  let todas = false; try { todas = localStorage.getItem("rkTodas") === "1"; } catch {}
+  const lim = clic && todas ? rows.length : 8, mais = rows.length > 8 ? (clic ? `<button class="link" data-act="rkTodas" style="margin-top:6px">${todas ? "Mostrar só as 8 maiores" : `Ver todas as ${rows.length} categorias (+${rows.length - 8}, ${brl(r2(rows.slice(8).reduce((s0, r) => s0 + r.v, 0)))})`}</button>` : "") : "";
+  return `<div class="bars">${rows.slice(0, lim).map(r => `<div class="bar ${clic ? "clk" : ""}" ${clic ? `data-act="det" data-k="cat" data-id="${esc(r.id)}"` : ""}><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div><b class="bv">${brl(r.v)}</b></div>`).join("")}</div>${mais}`;
 }
 function barrasCartoes(rows) {
   const max = rows[0]?.v || 1;
@@ -1526,6 +1528,7 @@ const A = {
     <div class="day">Lançamentos</div>${it.sort((a, b) => b.data.localeCompare(a.data)).map(l => linha(l)).join("")}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   fixTab: d => { try { localStorage.setItem("fixTab", d.v); } catch {} render(); },
+  rkTodas: () => { try { localStorage.setItem("rkTodas", localStorage.getItem("rkTodas") === "1" ? "0" : "1"); } catch {} render(); },
   anModo: d => { try { localStorage.setItem("anFat", d.v); } catch {} render(); },
   rkModo: d => { try { localStorage.setItem("rkFat", d.v); } catch {} render(); },
   detConta: d => { const c = by("contas", d.id), rec = d.t === "rec", ini = d.ini, fim = d.fim, tp = rec ? "receita" : "despesa";
