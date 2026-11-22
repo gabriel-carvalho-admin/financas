@@ -490,12 +490,16 @@ function statusFixa(f, ym = S.mes) {
   return { k: atras ? 0 : 2, l, venc, txt: `Falta lançar · ${atras && pend ? "venceu" : "vence"} dia ${pad(Number(venc.slice(8)))}`, tag: "Lançar", cor: atras && pend ? "#d9483b" : "#3b7ddd", pend };
 }
 const fixasMes = (ym = S.mes) => S.data.fixas.map(f => ({ f, ...statusFixa(f, ym) })).sort((a, b) => b.venc.localeCompare(a.venc) || a.f.nome.localeCompare(b.f.nome));
+const ehAssin = f => nrm(f.subgrupo || "") === "assinaturas digitais";
+const FIX_ABAS = [["Contas fixas", f => !ehAssin(f), "Cadastre água, luz, internet… e o app lembra você todo mês."], ["Assinaturas digitais", ehAssin, "Cadastre Netflix, Spotify… (subgrupo “Assinaturas digitais”) e acompanhe todo mês."]];
+const fixTab = () => { try { return Number(localStorage.getItem("fixTab")) === 1 ? 1 : 0; } catch { return 0; } };
 function cardFixas() {
-  const fs = fixasMes(), pagas = fs.filter(x => x.k === 3).length, tot = r2(fs.reduce((s0, x) => s0 + (x.l?.valor || 0), 0));
-  return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>
+  const t = fixTab(), [nomeAba, filtro, vazio] = FIX_ABAS[t], todas = fixasMes(), fs = todas.filter(x => filtro(x.f)), pagas = fs.filter(x => x.k === 3).length, tot = r2(fs.reduce((s0, x) => s0 + (x.l?.valor || 0), 0));
+  const nav = `<div class="fxnav"><button data-act="fixTab" data-v="${1 - t}" aria-label="Anterior">‹</button><b>${nomeAba}</b><span class="fxn">${t + 1}/2</span><button data-act="fixTab" data-v="${1 - t}" aria-label="Próxima">›</button></div>`;
+  return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>${nav}
   ${fs.map(x => { const c = cat(x.f.categoriaId); return `<div class="row" data-act="lancarFixa" data-id="${x.f.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(x.f.nome)}</div><small>${esc(c.nome + (x.f.subgrupo ? " › " + x.f.subgrupo : ""))} · ${x.txt}</small></div>
     <div class="r"><div class="b">${x.l ? brl(x.l.valor) : "—"}</div><span class="tag" style="background:${x.cor}">${x.tag}</span></div><button data-act="editFixa" data-id="${x.f.id}" title="Editar conta mensal">${ico("mais")}</button></div>`; }).join("")
-    || '<div class="empty">Cadastre água, luz, internet… e o app lembra você todo mês.</div>'}
+    || `<div class="empty">${vazio}</div>`}
   ${fs.length ? `<div class="sum">${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b></div>` : ""}</div>`;
 }
 // O aviso só aparece quando chega o dia do vencimento (ou depois) e a conta mensal ainda não foi paga
@@ -1338,7 +1342,7 @@ const formVeiculo = crud("veiculos", "oveículo", [{ k: "nome", label: "Nome (ex
 const formFixa = crud("fixas", "aconta mensal", [{ k: "nome", label: "Nome (ex.: Água, Luz)" }, { k: "dia", label: "Dia em que costuma vencer", type: "number" }, { k: "categoriaId", label: "Grupo (categoria)", type: "select", redraw: true, options: () => optCats("despesa") },
   { k: "subgrupo", label: "Subgrupo (opcional — ex.: Energia, Internet)", list: v => subsMais(v.categoriaId, [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b))) },
   { k: "origem", label: "Costuma pagar com", type: "select", options: () => [...optContas().map(([k, n]) => ["c:" + k, n]), ...S.data.cartoes.map(c => ["k:" + c.id, "💳 " + c.nome])] }],
-  () => ({ nome: "", dia: 10 }), { in: o => ({ ...o, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + (o.contaId || contasOrd()[0]?.id) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), dia: Math.max(1, Math.min(31, Math.floor(Number(v.dia) || 10))), categoriaId: v.categoriaId || "", subgrupo: (v.subgrupo || "").trim(), contaId: (v.origem || "").startsWith("c:") ? v.origem.slice(2) : "", cartaoId: (v.origem || "").startsWith("k:") ? v.origem.slice(2) : "" } : (toast("Informe o nome."), null) },
+  () => ({ nome: "", dia: 10, ...(fixTab() === 1 ? { categoriaId: S.data.categorias.find(c => nrm(c.nome) === "eletronicos e tecnologia")?.id || "", subgrupo: "Assinaturas digitais" } : {}) }), { in: o => ({ ...o, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + (o.contaId || contasOrd()[0]?.id) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), dia: Math.max(1, Math.min(31, Math.floor(Number(v.dia) || 10))), categoriaId: v.categoriaId || "", subgrupo: (v.subgrupo || "").trim(), contaId: (v.origem || "").startsWith("c:") ? v.origem.slice(2) : "", cartaoId: (v.origem || "").startsWith("k:") ? v.origem.slice(2) : "" } : (toast("Informe o nome."), null) },
   null, (o, d) => Promise.all(S.data.lancamentos.filter(l => l.fixaId === o.id && ((l.categoriaId || "") !== d.categoriaId || (l.subgrupo || "") !== d.subgrupo)).map(l => store.set("lancamentos", l.id, { ...l, categoriaId: d.categoriaId, subgrupo: d.subgrupo }))));
 function formLancarFixa(id) {
   const f = by("fixas", id); if (!f) return; if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
@@ -1503,6 +1507,7 @@ const A = {
     ${donut(rows.map(([n, v], i) => ({ nome: n, cor: cores[i % cores.length], v: r2(v) })), brl(t))}
     <div class="day">Lançamentos</div>${it.sort((a, b) => b.data.localeCompare(a.data)).map(l => linha(l)).join("")}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
+  fixTab: d => { try { localStorage.setItem("fixTab", d.v); } catch {} render(); },
   anModo: d => { try { localStorage.setItem("anFat", d.v); } catch {} render(); },
   rkModo: d => { try { localStorage.setItem("rkFat", d.v); } catch {} render(); },
   detConta: d => { const c = by("contas", d.id), rec = d.t === "rec", ini = d.ini, fim = d.fim, tp = rec ? "receita" : "despesa";

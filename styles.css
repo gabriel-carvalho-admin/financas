@@ -307,3 +307,8 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .bar.wide{grid-template-columns:minmax(110px,40%) 1fr auto}.bar.wide .n{text-align:left}
 
 td.lkc{cursor:pointer}td.lkc:hover{background:var(--soft)}
+
+.fxnav{display:flex;align-items:center;justify-content:center;gap:12px;margin:2px 0 8px}
+.fxnav b{min-width:150px;text-align:center}
+.fxnav .fxn{font-size:11px;opacity:.6}
+.fxnav button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line,#ddd);background:var(--card,#fff);font-size:20px;line-height:1;cursor:pointer;color:inherit}
