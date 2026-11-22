@@ -355,7 +355,7 @@ const sub = l => {
   if (l.tipo === "transferencia") return `${esc(onde || "?")} → ${esc(by("contas", l.contaDestinoId)?.nome || "?")}`;
   if (l.reembolso) return ["Pagamento recebido", onde].filter(Boolean).map(esc).join(" · ");
   if (l.emprestimo) return ["Empréstimo", l.vencimento ? "pagar até " + dataBR(l.vencimento) : "", onde, by("pessoas", l.pessoaId)?.nome].filter(Boolean).map(esc).join(" · ");
-  return [cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.veiculoId ? "🚗 " + (by("veiculos", l.veiculoId)?.nome || "") + (l.km ? " · " + Number(l.km).toLocaleString("pt-BR") + " km" : "") + (l.litros ? " · " + String(l.litros).replace(".", ",") + " L" + (l.cheio === false ? " (parcial)" : "") : "") : "", l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
+  return [(l.nota ? "📎 " : "") + cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.veiculoId ? "🚗 " + (by("veiculos", l.veiculoId)?.nome || "") + (l.km ? " · " + Number(l.km).toLocaleString("pt-BR") + " km" : "") + (l.litros ? " · " + String(l.litros).replace(".", ",") + " L" + (l.cheio === false ? " (parcial)" : "") : "") : "", l.parcelas ? `${l.parcela}/${l.parcelas}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
 };
 const linha = (l, sel) => {
   const c = l.tipo === "transferencia" ? { icone: "⇄", cor: "#5b6ee0" } : l.reembolso ? { icone: "↩", cor: by("pessoas", l.pessoaId)?.cor || "#2e9e5b" } : cat(l.emprestimo ? "__emp" : l.categoriaId);
@@ -560,7 +560,7 @@ const CATALOGO = [
   ["Refeições", "🍽️", "#e0564a", "despesa", ["Restaurantes", "Fast food", "Sorveterias e lanches", "Delivery"]],
   ["Casa", "🏠", "#8d6e63", "despesa", ["Limpeza", "Utensílios e cozinha", "Manutenção e reparos", "Móveis e decoração", "Eletrodomésticos", "Piscina e jardim"]],
   ["Contas fixas", "📅", "#4a9be0", "despesa", ["Energia", "Água", "Internet", "Telefone e plano", "Gás"]],
-  ["Transporte", "🚗", "#5b6ee0", "despesa", ["Combustível", "Estacionamento", "Manutenção do carro", "Manutenção da moto", "Seguro, IPVA e taxas", "Aplicativo e passagem"]],
+  ["Transporte", "🚗", "#5b6ee0", "despesa", ["Combustível", "Estacionamento", "Manutenção do carro", "Manutenção da moto", "Pneus", "Seguro, IPVA e taxas", "Aplicativo e passagem"]],
   ["Cuidados pessoais", "🧴", "#ec6fa0", "despesa", ["Higiene e perfumaria", "Protetor solar e pele", "Cabelo e barbearia", "Roupas e calçados"]],
   ["Saúde", "💊", "#2f8f83", "despesa", ["Farmácia", "Consultas e exames", "Óculos e dentista", "Academia"]],
   ["Eletrônicos e tecnologia", "💻", "#607d8b", "despesa", ["Celular e acessórios", "Computador e periféricos", "Som e vídeo", "Assinaturas digitais"]],
@@ -593,7 +593,7 @@ const REGRAS_ORG = [
 ];
 // subgrupos já usados em "Contas fixas" que passam a seguir o padrão
 const SUBS_FIXAS = [[/equatorial|energia/i, "Energia"], [/[aá]guas? de|^[aá]gua/i, "Água"], [/plano|tim|telefone/i, "Telefone e plano"], [/piscin/i, "Piscina e jardim", "Casa"]];
-const subsMais = (catId, arr) => [...new Set([...(by("config", "catalogo")?.subs?.[catId] || []), ...arr])].sort((a, b) => a.localeCompare(b));
+const subsMais = (catId, arr) => [...new Set([...(by("config", "catalogo")?.subs?.[catId] || []), ...(CATALOGO.find(a => nrm(a[0]) === nrm(by("categorias", catId)?.nome))?.[4] || []), ...arr])].sort((a, b) => a.localeCompare(b));
 function planoOrg() {
   const cs = S.data.categorias, alvoId = {}, criar = [], renomear = [], juntar = [], mantidas = [], mapa = {};
   for (const [nome, icone, cor, tipo] of CATALOGO) {
@@ -971,7 +971,7 @@ function draw() {
       <button class="hb" id="bpriv" data-act="priv" aria-label="Modo privado: esconder valores" title="Modo privado">${ico("olho")}</button>
       <div class="mes"><button data-act="mes" data-v="-1" aria-label="Mês anterior">‹</button><span class="lbl" id="mlbl"></span><button data-act="mes" data-v="1" aria-label="Próximo mês">›</button></div>
       <button class="fab" data-act="novo" aria-label="Novo lançamento">+</button></header>
-      <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="drawer"></div><div id="modal"></div>`;
+      <nav class="side" id="side"></nav><main id="main"></main><nav class="bot" id="bot"></nav></div><div id="drawer"></div><div id="modal"></div><div id="modal2"></div>`;
     iniciarFlutuantes({ gravar: o => store.set("config", "notas", o) });
   }
   $("#mlbl").textContent = S.view === "inicio" && S.per !== "mes" ? periodo().label.replace("Ano de ", "") : `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
@@ -1009,6 +1009,20 @@ async function abrirEmojis(cb) {
     if (b) { fechar(); cb(b.dataset.e); } else if (t) { g = Number(t.dataset.g); q = ""; $(".emq", el).value = ""; nome(); grade(); $(".emg", el).scrollTop = 0; } };
   $(".emq", el).oninput = e => { q = e.target.value; nome(); grade(); }; nome(); grade(); $(".emq", el).focus();
 }
+/* ---------- foto da nota fiscal ---------- */
+function fotoNota(file) {
+  return new Promise((ok, err) => { const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { URL.revokeObjectURL(url); let lado = 1500, q = 0.7, out = "";
+      for (let i = 0; i < 6; i++) { const k = Math.min(1, lado / Math.max(img.width, img.height)), c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        const x = c.getContext("2d"); x.filter = "grayscale(1) contrast(1.35) brightness(1.08)"; x.drawImage(img, 0, 0, c.width, c.height); out = c.toDataURL("image/jpeg", q); if (out.length < 420000) break; lado *= 0.8; q = Math.max(0.45, q - 0.07); }
+      ok(out); };
+    img.onerror = () => { URL.revokeObjectURL(url); err(new Error("Não foi possível ler a imagem.")); }; img.src = url; });
+}
+const verNotaImg = (src, titulo = "Nota fiscal") => { $("#modal2").innerHTML = `<div class="ov" data-act="fechar2"><div class="modal" style="max-width:640px"><h2>📎 ${esc(titulo)}</h2><img src="${src}" style="width:100%;border-radius:10px;background:#fff" alt="Nota fiscal"><div class="acts"><a class="btn ghost" href="${src}" download="nota-fiscal.jpg">Baixar</a><span class="sp"></span><button class="btn ghost" data-act="fechar2">Fechar</button></div></div></div>`; };
+const tipoVeic = l => { const t = `${l.subgrupo || ""} ${l.descricao || ""} ${cat(l.categoriaId).nome}`;
+  if (Number(l.litros) > 0 || /combust|gasolina|etanol|diesel|gnv|abasteci|posto/i.test(t)) return "comb";
+  if (/pneu|alinhamento|balanceamento|calibra|c[aâ]mara de ar|rodas?\b/i.test(t)) return "pneu";
+  if (/manuten|oficina|[oó]leo|revis|freio|bateria|mec[aâ]nic|pe[cç]a|filtro|suspens|embreagem|correia|vela|lanternagem|funilaria|el[eé]trica|reparo/i.test(t)) return "manut"; return "outros"; };
 /* ---------- formulários ---------- */
 function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Excluir", extra }) {
   const v = { ...values }, box = $("#modal");
@@ -1019,6 +1033,7 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
     if (f.type === "titulo") return `<div class="ftit">${f.label}</div>`;
     if (f.type === "seg") return `<div class="f"><div class="seg">${opts(f).map(([k, n]) => `<button type="button" class="${val === k ? "on" : ""}" data-seg="${f.k}" data-v="${k}">${n}</button>`).join("")}</div></div>`;
     if (f.type === "emoji") return `<div class="f"><label>${f.label}</label><div class="emo-q">${[...new Set([val, ...EMOJIS])].filter(Boolean).map(e => `<button type="button" class="${val === e ? "on" : ""}" data-seg="${f.k}" data-v="${e}">${e}</button>`).join("")}<button type="button" class="emo-more" data-emo="${f.k}">🔍 Mais emojis</button></div></div>`;
+    if (f.type === "foto") return `<div class="f"><label>${f.label}</label><div class="foto">${val ? `<img src="${val}" data-nota-ver alt="Nota fiscal"><div class="fb2"><button type="button" class="btn ghost" data-foto="1">📷 Trocar foto</button><button type="button" class="btn ghost" data-foto-del="1">Remover</button></div>` : `<button type="button" class="btn ghost" data-foto="1">📷 Tirar foto / anexar nota fiscal</button>`}<input type="file" accept="image/*" capture="environment" hidden data-foto-in="1"></div></div>`;
     if (f.type === "check") return `<div class="f chk"><input type="checkbox" id="f-${f.k}" data-k="${f.k}" ${f.redraw ? "data-redraw" : ""} ${val ? "checked" : ""}><label for="f-${f.k}">${f.label}</label></div>`;
     if (f.type === "select") { const o = opts(f); if (!o.some(([k]) => k === val)) v[f.k] = o[0]?.[0] ?? ""; return `<div class="f"><label for="f-${f.k}">${f.label}</label><select id="f-${f.k}" data-k="${f.k}" ${f.redraw ? "data-redraw" : ""}>${o.map(([k, n]) => `<option value="${esc(k)}" ${v[f.k] === k ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`; }
     const t = f.type === "money" ? 'type="text" inputmode="decimal" placeholder="0,00"' : f.type === "number" ? 'type="number" inputmode="numeric"' : `type="${f.type || "text"}"`;
@@ -1033,6 +1048,7 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
     const form = $("form", box);
     form.oninput = e => { const k = e.target.dataset.k; if (!k) return; v[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value; if (e.target.hasAttribute("data-redraw")) $("#fb", box).innerHTML = body(); };
     form.onclick = async e => {
+      const ft = e.target.closest("[data-foto],[data-foto-del],[data-nota-ver]"); if (ft) { if (ft.dataset.foto) return $("[data-foto-in]", box).click(); if (ft.dataset.fotoDel) { v.nota = ""; $("#fb", box).innerHTML = body(); return; } return verNotaImg(v.nota); }
       const t = e.target.closest("[data-seg],[data-x],[data-emo]"); if (!t) { if (e.target.classList.contains("ov")) close(); return; }
       if (t.dataset.emo) return abrirEmojis(e2 => { v[t.dataset.emo] = e2; $("#fb", box).innerHTML = body(); });
       if (t.dataset.seg) { v[t.dataset.seg] = t.dataset.v; $("#fb", box).innerHTML = body(); return; }
@@ -1040,6 +1056,7 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
       if (!conf || conf !== t.dataset.x) { conf = t.dataset.x; t.textContent = "Confirmar exclusão"; return; }
       await (t.dataset.x === "del" ? onDelete() : extra.fn()); close();
     };
+    form.onchange = async e => { if (!e.target.matches("[data-foto-in]") || !e.target.files[0]) return; try { toast("Processando a foto…"); v.nota = await fotoNota(e.target.files[0]); $("#fb", box).innerHTML = body(); toast("Nota anexada. Toque em Salvar."); } catch (er) { toast(er.message); } };
     form.onsubmit = async e => { e.preventDefault(); try { if (await onSave(v) !== false) close(); } catch (err) { toast("Não foi possível salvar: " + (err.code || err.message)); } };
     $(".ov", box).onclick = e => { if (e.target.classList.contains("ov")) close(); };
   };
@@ -1052,8 +1069,8 @@ const optCats = t => S.data.categorias.filter(c => c.tipo === t).sort((a, b) => 
 function formLanc(orig, cartaoId, pessoaId, dataPre, veiculoId) {
   if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
   const ed = !!orig, o = orig || {};
-  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", veiculoId: o.veiculoId || "", km: o.km || "", litros: o.litros ? moneyIn(o.litros) : "", cheio: o.cheio !== false, subgrupo: o.subgrupo || "", destino: o.contaDestinoId, efetivada: o.efetivada, parcelaEd: o.parcela || "", parcelasEd: o.parcelas || "", repetir: "variavel", parcelas: 2 }
-    : { tipo: "despesa", descricao: "", valor: "", data: dataPre || (ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`), origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", veiculoId: veiculoId || "", km: "", litros: "", cheio: true, subgrupo: "", efetivada: true, repetir: "variavel", parcelas: 2, parcelaAtual: 1, valorTipo: "total" };
+  const values = ed ? { tipo: o.tipo, descricao: o.descricao, valor: moneyIn(o.valor), data: o.data, categoriaId: o.categoriaId, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + o.contaId, pessoaId: o.pessoaId || "", veiculoId: o.veiculoId || "", nota: o.nota || "", km: o.km || "", litros: o.litros ? moneyIn(o.litros) : "", cheio: o.cheio !== false, subgrupo: o.subgrupo || "", destino: o.contaDestinoId, efetivada: o.efetivada, parcelaEd: o.parcela || "", parcelasEd: o.parcelas || "", repetir: "variavel", parcelas: 2 }
+    : { tipo: "despesa", descricao: "", valor: "", data: dataPre || (ymOf(hoje()) === S.mes ? hoje() : `${S.mes}-01`), origem: cartaoId ? "k:" + cartaoId : "c:" + contasOrd()[0].id, pessoaId: pessoaId || "", veiculoId: veiculoId || "", nota: "", km: "", litros: "", cheio: true, subgrupo: "", efetivada: true, repetir: "variavel", parcelas: 2, parcelaAtual: 1, valorTipo: "total" };
   openForm({
     title: ed ? "Editar lançamento" : "Novo lançamento", values,
     fields: [
@@ -1070,6 +1087,7 @@ function formLanc(orig, cartaoId, pessoaId, dataPre, veiculoId) {
       { k: "origem", label: "Conta", type: "select", options: () => optContas().map(([k, n]) => ["c:" + k, n]), when: v => v.tipo === "receita" },
       { k: "origem", label: "Conta de origem", type: "select", options: () => optContas().map(([k, n]) => ["c:" + k, n]), when: v => v.tipo === "transferencia" },
       { k: "destino", label: "Conta de destino", type: "select", options: optContas, when: v => v.tipo === "transferencia" },
+      { k: "nota", label: "Nota fiscal (foto)", type: "foto", when: v => v.tipo === "despesa" && !o.emprestimo },
       { k: "efetivada", label: "Já foi paga / recebida", type: "check", when: v => !(v.tipo === "despesa" && v.origem?.startsWith("k:")) },
       { k: "repetir", label: "Repetição", type: "select", redraw: true, options: [["variavel", "Não repete"], ["fixa", "Fixa mensal (próximos 12 meses)"], ["parcelada", "Parcelada"]], when: v => !ed && v.tipo !== "transferencia" },
       { k: "parcelas", label: "Em quantas vezes foi parcelado", type: "number", when: v => !ed && v.tipo !== "transferencia" && v.repetir === "parcelada" },
@@ -1084,7 +1102,7 @@ function formLanc(orig, cartaoId, pessoaId, dataPre, veiculoId) {
       const tq = Number(by("veiculos", v.veiculoId)?.tanque) || 0; if (v.tipo === "despesa" && v.veiculoId && tq && parseMoney(v.litros) > tq + 0.005) { toast(`Os litros (${parseMoney(v.litros)} L) passam da capacidade do tanque (${String(tq).replace(".", ",")} L).`); return false; }
       const noCartao = v.tipo === "despesa" && v.origem.startsWith("k:"), id = v.origem.slice(2);
       if (v.tipo === "transferencia" && v.destino === id) { toast("Escolha contas diferentes."); return false; }
-      const b = { tipo: v.tipo, descricao: v.descricao.trim() || (v.tipo === "transferencia" ? "Transferência" : cat(v.categoriaId).nome), valor, data: v.data,
+      const b = { nota: v.tipo === "despesa" ? v.nota || "" : "", tipo: v.tipo, descricao: v.descricao.trim() || (v.tipo === "transferencia" ? "Transferência" : cat(v.categoriaId).nome), valor, data: v.data,
         categoriaId: v.tipo === "transferencia" || o.reembolso ? "" : v.categoriaId || "", subgrupo: v.tipo === "transferencia" || o.reembolso ? "" : (v.subgrupo || "").trim(), contaId: noCartao ? "" : id, cartaoId: noCartao ? id : "", contaDestinoId: v.tipo === "transferencia" ? v.destino : "", veiculoId: v.tipo === "despesa" && !o.emprestimo ? v.veiculoId || "" : "", km: v.tipo === "despesa" && !o.emprestimo && v.veiculoId && Number(v.km) > 0 ? Math.round(Number(v.km)) : "", litros: v.tipo === "despesa" && !o.emprestimo && v.veiculoId && parseMoney(v.litros) > 0 ? r2(parseMoney(v.litros)) : "", ...(v.tipo === "despesa" && !o.emprestimo && v.veiculoId && parseMoney(v.litros) > 0 ? { cheio: v.cheio !== false } : {}), pessoaId: v.tipo === "despesa" ? v.pessoaId || "" : o.reembolso ? o.pessoaId : "", efetivada: noCartao ? true : !!v.efetivada };
       if (ed) { const d = { ...o, ...b };
         if (v.tipo === "despesa" && !o.emprestimo) { const pt = Math.floor(Number(v.parcelasEd) || 0), pa = Math.floor(Number(v.parcelaEd) || 0);
@@ -1126,6 +1144,26 @@ const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", opti
 const formPessoa = crud("pessoas", "apessoa", [{ k: "nome", label: "Nome" }, { k: "grupo", label: "Grupo", type: "select", options: GRUPOS }, { k: "cor", label: "Cor", type: "color" }],
   () => ({ nome: "", grupo: grupoNovo, cor: grupoNovo === "empresas" ? "#5b6ee0" : "#e0564a" }), { in: o => ({ ...o, grupo: grupoDe(o) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), grupo: v.grupo || "familia", cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.pessoaId === o.id) ? "Esta pessoa tem despesas. Troque ou exclua as despesas antes." : "");
+function abrirVeiculo(id, tab = "todas") {
+  const x = by("veiculos", id); if (!x) return; S.vTab = tab;
+  const todas = S.data.lancamentos.filter(l => l.tipo === "despesa" && l.veiculoId === x.id).sort((a, b) => b.data.localeCompare(a.data) || (b.km || 0) - (a.km || 0)), ano = S.mes.slice(0, 4);
+  const abas = [["todas", "Todas"], ["comb", "⛽ Combustível"], ["manut", "🔧 Manutenção"], ["pneu", "🛞 Pneus"], ["outros", "Outros"]], cont = k => k === "todas" ? todas : todas.filter(l => tipoVeic(l) === k);
+  const ls = cont(tab), kmDe = l => Number(l.km) > 0 ? Number(l.km).toLocaleString("pt-BR") + " km" : "";
+  const box = (t, v) => `<div><small>${t}</small>${v}</div>`;
+  let st = "";
+  if (tab === "comb") { const ab = ls.filter(l => Number(l.litros) > 0), lt = ab.reduce((a, l) => a + Number(l.litros), 0), gl = ab.reduce((a, l) => a + l.valor, 0);
+    const o = [...ab].sort((a, b) => a.data.localeCompare(b.data) || a.km - b.km).filter(l => Number(l.km) > 0), ch = o.map((l, i) => l.cheio === false ? -1 : i).filter(i => i >= 0), i0 = ch[0], i1 = ch[ch.length - 1], conj = ch.length > 1 ? o.slice(i0 + 1, i1 + 1) : [], rod = conj.length ? o[i1].km - o[i0].km : 0, lc = conj.reduce((a, l) => a + Number(l.litros), 0);
+    st = `<div class="tri" style="font-size:14px;margin-bottom:6px">${box("No mês", brl(total(ls.filter(l => ymOf(l.data) === S.mes))))}${box("Litros no total", lt ? lt.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " L" : "—")}${box("Preço médio/L", lt ? brl(gl / lt) : "—")}</div>
+    <div class="sum" style="justify-content:flex-start;gap:6px 14px;margin:0 0 8px"><span>${ab.length} ${ab.length === 1 ? "abastecimento" : "abastecimentos"}</span>${rod > 0 && lc > 0 ? `<span>⛽ Consumo médio <b>${(rod / lc).toFixed(1).replace(".", ",")} km/L</b></span>` : '<span class="mut">Consumo aparece com 2 abastecimentos de tanque cheio e km informado.</span>'}</div>`; }
+  else if (tab === "manut" || tab === "pneu") { const u = ls[0];
+    st = `<div class="tri" style="font-size:14px;margin-bottom:8px">${box("No ano", brl(total(ls.filter(l => l.data.slice(0, 4) === ano))))}${box("Total", brl(total(ls)))}${box(tab === "pneu" ? "Última troca/serviço" : "Último serviço", u ? dataBR(u.data).slice(0, 5) + (kmDe(u) ? " · " + kmDe(u) : "") : "—")}</div>`; }
+  else st = `<div class="tri" style="font-size:14px;margin-bottom:8px">${box("No mês", brl(total(ls.filter(l => ymOf(l.data) === S.mes))))}${box("No ano", brl(total(ls.filter(l => l.data.slice(0, 4) === ano))))}${box("Total", brl(total(ls)))}</div>`;
+  $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:560px"><h2>${VEIC_ICO[x.tipo] || "🚗"} ${esc(x.nome)}</h2>
+    <div class="vtabs">${abas.map(([k, n]) => `<button class="${k === tab ? "on" : ""}" data-act="vTab" data-id="${x.id}" data-tab="${k}">${n}${cont(k).length ? ` <small>${cont(k).length}</small>` : ""}</button>`).join("")}</div>
+    ${st}<div class="acts" style="margin:0 0 6px"><button class="btn" data-act="novo" data-veiculo="${x.id}">+ Despesa</button></div>
+    ${ls.map(l => `<div class="row" data-act="editL" data-id="${l.id}">${av(cat(l.categoriaId).icone, cat(l.categoriaId).cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${esc(l.subgrupo || cat(l.categoriaId).nome)}${kmDe(l) ? " · " + kmDe(l) : ""}${Number(l.litros) > 0 ? " · " + String(l.litros).replace(".", ",") + " L" : ""}</small></div>${l.nota ? `<button class="link" data-act="verNota" data-id="${l.id}" title="Ver nota fiscal">📎</button>` : ""}<b class="neg">${brl(l.valor)}</b></div>`).join("") || '<div class="empty">Nenhuma despesa nesta aba.</div>'}
+    <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`;
+}
 const VEIC_ICO = { carro: "🚗", moto: "🏍️", utilitario: "🚐", caminhao: "🚚", outro: "🚙" };
 const formVeiculo = crud("veiculos", "oveículo", [{ k: "nome", label: "Nome (ex.: Nissan March, Kombi, Palio)" }, { k: "tipo", label: "Tipo", type: "select", options: [["carro", "🚗 Carro"], ["moto", "🏍️ Moto"], ["utilitario", "🚐 Utilitário / Kombi"], ["caminhao", "🚚 Caminhão"], ["outro", "🚙 Outro"]] },
   { k: "dono", label: "De quem é o veículo (opcional — ex.: Suco Verde)", type: "select", options: () => [["", "Eu"], ...S.data.pessoas.map(p => [p.id, p.nome])] }, { k: "tanque", label: "Capacidade do tanque (litros — opcional)", type: "money" }, { k: "placa", label: "Placa (opcional)" }, { k: "cor", label: "Cor", type: "color" }],
@@ -1238,9 +1276,8 @@ const A = {
   toggleL: d => { const l = by("lancamentos", d.id); store.set("lancamentos", l.id, { ...l, efetivada: !l.efetivada }); },
   orgPrevia: () => previaOrg(), orgAplicar: () => aplicarOrg(), orgDesfazer: () => desfazerOrg(),
   editVeiculo: d => formVeiculo(d.id),
-  verVeiculo: d => { const x = by("veiculos", d.id); if (!x) return; const ls = S.data.lancamentos.filter(l => l.tipo === "despesa" && l.veiculoId === x.id), ano = S.mes.slice(0, 4);
-    const pre = `<div class="tri" style="font-size:14px;margin-bottom:10px"><div><small>No mês</small>${brl(total(ls.filter(l => ymOf(l.data) === S.mes)))}</div><div><small>No ano</small>${brl(total(ls.filter(l => l.data.slice(0, 4) === ano)))}</div><div><small>Total</small>${brl(total(ls))}</div></div>`;
-    modalLista(`${VEIC_ICO[x.tipo] || "🚗"} ${esc(x.nome)} — todas as despesas`, ls, pre); },
+  verVeiculo: d => abrirVeiculo(d.id, d.tab || S.vTab || "todas"),
+  vTab: d => { S.vTab = d.tab; abrirVeiculo(d.id, d.tab); },
   editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => { grupoNovo = d.grupo || "familia"; formPessoa(d.id); }, editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
   pagar: d => { const c = by("cartoes", d.id), valor = fatTotal(c.id, S.mes);
     openForm({ title: `Pagar fatura — ${brl(valor)}`, values: { contaId: c.contaId, data: hoje() }, fields: [{ k: "contaId", label: "De qual conta saiu o dinheiro", type: "select", options: optContas }, { k: "data", label: "Data do pagamento", type: "date" }],
@@ -1282,6 +1319,7 @@ const A = {
         recorrencia: parc ? "parcelada" : "variavel", ...(parc ? { parcela: Number(p[1]), parcelas: Number(p[2]) } : {}), importId: x.importId, descOrig: x.descOrig, ...(naFatura ? { faturaRef: S.mes } : {}) }; });
     try { await store.addMany("lancamentos", novos); toast(`${novos.length} compras importadas (${brl(total(novos))}).`); IMP = null; $("#modal").innerHTML = ""; }
     catch (err) { toast("Não foi possível importar: " + (err.code || err.message)); } },
+  fechar2: (d, e) => { if (d.force || e.target.classList.contains("ov")) $("#modal2").innerHTML = ""; }, verNota: d => { const l = by("lancamentos", d.id); if (l?.nota) verNotaImg(l.nota, l.descricao); },
   fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) { $("#modal").innerHTML = ""; IMP = null; } },
   dark: () => { const on = document.documentElement.classList.toggle("dark"); try { localStorage.setItem("mf-dark", on ? "1" : "0"); } catch (e) {} render(); },
   csv: exportarCSV,

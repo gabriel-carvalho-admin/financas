@@ -288,3 +288,7 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .sl{transition:opacity .15s,stroke-width .15s}.sl.clk{cursor:pointer}.sl:hover{stroke-width:7.6}.sl.dim{opacity:.35}.leg [data-sl]:hover{background:var(--bg2,rgba(127,127,127,.12));border-radius:8px}
 .bar:has(.bv){grid-template-columns:92px 1fr auto}.bv{font-size:12px;white-space:nowrap}
 .ct{pointer-events:none}
+
+.vtabs{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px}.vtabs button{white-space:nowrap;border:1px solid var(--line);background:transparent;color:inherit;border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer}.vtabs button.on{background:var(--pri);border-color:var(--pri);color:#fff}.vtabs small{opacity:.7}
+.foto{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.foto img{width:84px;height:84px;object-fit:cover;border-radius:10px;cursor:zoom-in;border:1px solid var(--line);background:#fff}.foto .fb2{display:grid;gap:6px}
+#modal2 .ov{z-index:70}
