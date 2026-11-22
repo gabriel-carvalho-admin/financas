@@ -59,7 +59,7 @@ const EMOJIS = ["🍽️","🛒","🏠","🚗","⛽","💊","🎓","🎮","👨�
 const GRUPOS_EV = ["Buffet", "Bebidas", "Decoração", "Equipe", "Som e luz", "Locação", "Transporte", "Outros"];
 const PALETA = ["#4a9be0", "#f5b335", "#e0564a", "#7e57c2", "#2f8f83", "#f29a38", "#3f51b5", "#26a69a", "#e57373", "#78909c"];
 const GRUPOS = [["familia", "Família"], ["parentes", "Parentes"], ["amigos", "Amigos"], ["empresas", "Empresas"]];
-let grupoNovo = "familia";
+let grupoNovo = "familia", tipoNovo = "despesa";
 const grupoDe = p => GRUPOS.some(([k]) => k === p.grupo) ? p.grupo : "familia";
 const CATS_PADRAO = [
   ["Alimentação","🍽️","#f5b335","despesa"],["Mercado","🛒","#f29a38","despesa"],["Moradia","🏠","#7e57c2","despesa"],["Carro","🚗","#e0564a","despesa"],
@@ -660,7 +660,7 @@ const REGRAS_ORG = [
 ];
 // subgrupos já usados em "Contas fixas" que passam a seguir o padrão
 const SUBS_FIXAS = [[/equatorial|energia/i, "Energia"], [/[aá]guas? de|^[aá]gua/i, "Água"], [/plano|tim|telefone/i, "Telefone e plano"], [/piscin/i, "Piscina e jardim", "Casa"]];
-const subsMais = (catId, arr) => [...new Set([...(by("config", "catalogo")?.subs?.[catId] || []), ...(CATALOGO.find(a => nrm(a[0]) === nrm(by("categorias", catId)?.nome))?.[4] || []), ...arr])].sort((a, b) => a.localeCompare(b));
+const subsMais = (catId, arr) => { const oc = (by("config", "catalogo")?.ocultas?.[catId] || []).map(nrm); return [...new Set([...(by("config", "catalogo")?.subs?.[catId] || []), ...(CATALOGO.find(a => nrm(a[0]) === nrm(by("categorias", catId)?.nome))?.[4] || []), ...arr])].filter(n => !oc.includes(nrm(n)) || arr.includes(n)).sort((a, b) => a.localeCompare(b)); };
 function planoOrg() {
   const cs = S.data.categorias, alvoId = {}, criar = [], renomear = [], juntar = [], mantidas = [], mapa = {};
   for (const [nome, icone, cor, tipo] of CATALOGO) {
@@ -729,10 +729,41 @@ async function desfazerOrg() {
     await store.del("config", "backup_organizar"); $("#modal").innerHTML = ""; toast("Organização desfeita.");
   } catch (e) { toast("Não foi possível desfazer: " + (e.code || e.message)); }
 }
+const usoSub = (catId, n) => S.data.lancamentos.filter(l => l.categoriaId === catId && (l.subgrupo || "") === n).length + S.data.fixas.filter(f => f.categoriaId === catId && (f.subgrupo || "") === n).length;
+const subsDe = catId => subsMais(catId, [...new Set([...S.data.lancamentos, ...S.data.fixas].filter(x => x.categoriaId === catId && x.subgrupo).map(x => x.subgrupo))]);
+const salvarCatalogo = patch => { const c = { ...(by("config", "catalogo") || {}) }; delete c.id; return store.set("config", "catalogo", { ...c, ...patch }); };
+function formSub(catId, antigo) {
+  const c = by("categorias", catId); if (!c) return;
+  const uso = antigo ? usoSub(catId, antigo) : 0;
+  openForm({ title: antigo ? `Editar subcategoria — ${c.nome}` : `Nova subcategoria — ${c.nome}`, values: { nome: antigo || "" }, fields: [{ k: "nome", label: "Nome da subcategoria" }],
+    onSave: async v => {
+      const n = (v.nome || "").trim(); if (!n) { toast("Informe o nome."); return false; }
+      if (nrm(n) !== nrm(antigo || "") && subsDe(catId).some(x => nrm(x) === nrm(n))) { toast("Já existe uma subcategoria com esse nome."); return false; }
+      const cat0 = by("config", "catalogo") || {}, subs = { ...(cat0.subs || {}) }, oc = { ...(cat0.ocultas || {}) };
+      let lista = [...(subs[catId] || [])], ocl = (oc[catId] || []).filter(x => nrm(x) !== nrm(n));
+      if (antigo && n !== antigo) { lista = lista.filter(x => x !== antigo); if (!ocl.some(x => nrm(x) === nrm(antigo))) ocl.push(antigo); }
+      if (!lista.includes(n)) lista.push(n);
+      subs[catId] = lista; oc[catId] = ocl;
+      await salvarCatalogo({ subs, ocultas: oc });
+      if (antigo && n !== antigo) {
+        await emLotes(S.data.lancamentos.filter(l => l.categoriaId === catId && (l.subgrupo || "") === antigo), l => store.set("lancamentos", l.id, { ...l, subgrupo: n }));
+        await emLotes(S.data.fixas.filter(f => f.categoriaId === catId && (f.subgrupo || "") === antigo), f => store.set("fixas", f.id, { ...f, subgrupo: n }));
+      }
+    },
+    onDelete: antigo ? async () => {
+      if (uso) return toast(`Esta subcategoria tem ${uso} ${uso === 1 ? "lançamento" : "lançamentos"}. Mude-os de subcategoria antes de excluir.`);
+      const cat0 = by("config", "catalogo") || {}, subs = { ...(cat0.subs || {}) }, oc = { ...(cat0.ocultas || {}) };
+      subs[catId] = (subs[catId] || []).filter(x => x !== antigo); oc[catId] = [...new Set([...(oc[catId] || []), antigo])];
+      await salvarCatalogo({ subs, ocultas: oc });
+    } : null });
+}
 V.categorias = () => {
-  const bloco = (t, nome) => `<div class="card"><h3>${nome}</h3>${S.data.categorias.filter(c => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome)).map(c => `<div class="row" data-act="editCat" data-id="${c.id}">${av(c.icone, c.cor)}<div class="tx">${esc(c.nome)}</div></div>`).join("") || '<div class="empty">Nenhuma.</div>'}</div>`;
+  const cats = t => S.data.categorias.filter(c => c.tipo === t).sort((a, b) => a.nome.localeCompare(b.nome));
+  const bloco = (t, nome) => `<div class="card"><h3>${nome} <button class="link" data-act="editCat" data-tipo="${t}">+ nova</button></h3>${cats(t).map(c => `<div class="row" data-act="editCat" data-id="${c.id}">${av(c.icone, c.cor)}<div class="tx">${esc(c.nome)}</div><small class="mut">${subsDe(c.id).length} sub</small></div>`).join("") || '<div class="empty">Nenhuma.</div>'}</div>`;
+  const blocoSub = (t, nome) => `<div class="card"><h3>${nome}</h3>${cats(t).map(c => { const ss = subsDe(c.id);
+    return `<div class="agh"><b>${esc(c.icone + " " + c.nome)}</b><button class="link" data-act="subNova" data-cat="${c.id}">+ subcategoria</button></div>${ss.map(n => `<div class="row" data-act="subEdit" data-cat="${c.id}" data-n="${esc(n)}"><div class="tx">${esc(n)}</div><small class="mut">${usoSub(c.id, n) || ""}</small>${ico("mais")}</div>`).join("") || '<div class="empty" style="padding:6px 0">Sem subcategorias.</div>'}`; }).join("") || '<div class="empty">Crie uma categoria primeiro.</div>'}</div>`;
   return `<div class="tools"><h2 style="flex:1">Categorias</h2><button class="btn ghost" data-act="orgPrevia">✨ Organizar categorias</button><button class="btn" data-act="editCat">Nova categoria</button></div>
-  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">${bloco("despesa", "Despesas")}${bloco("receita", "Receitas")}</div>`;
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">${bloco("despesa", "Despesas")}${blocoSub("despesa", "Subcategorias de despesas")}${bloco("receita", "Receitas")}${blocoSub("receita", "Subcategorias de receitas")}</div>`;
 };
 /* ---------- Energia (Equatorial + solar) ---------- */
 const kwh = v => (Math.abs(v) < 0.005 ? 0 : v).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " kWh";
@@ -1328,7 +1359,7 @@ const formCartao = crud("cartoes", "ocartão", [{ k: "nome", label: "Nome do car
   { in: o => ({ ...o, limite: moneyIn(o.limite) }), out: v => { const dia = x => Math.max(1, Math.min(31, Math.floor(Number(x) || 1))); return v.nome.trim() ? { nome: v.nome.trim(), bandeira: (v.bandeira || "").trim(), limite: parseMoney(v.limite), fechamento: dia(v.fechamento), vencimento: dia(v.vencimento), contaId: v.contaId || "", cor: v.cor } : (toast("Informe o nome."), null); } },
   o => S.data.lancamentos.some(l => l.cartaoId === o.id) ? "Este cartão tem despesas. Exclua-as antes." : "");
 const formCat = crud("categorias", "acategoria", [{ k: "tipo", type: "seg", options: [["despesa", "Despesa"], ["receita", "Receita"]] }, { k: "nome", label: "Nome" }, { k: "icone", label: "Ícone", type: "emoji" }, { k: "cor", label: "Cor", type: "color" }],
-  () => ({ tipo: "despesa", nome: "", icone: "📦", cor: "#4a9be0" }),
+  () => ({ tipo: tipoNovo, nome: "", icone: "📦", cor: "#4a9be0" }),
   { in: o => o, out: v => v.nome.trim() ? { tipo: v.tipo, nome: v.nome.trim(), icone: v.icone, cor: v.cor } : (toast("Informe o nome."), null) },
   o => S.data.lancamentos.some(l => l.categoriaId === o.id) ? "Esta categoria tem lançamentos." : S.data.orcamentos.some(x => x.categoriaId === o.id) ? "Esta categoria tem orçamento." : "");
 const formPessoa = crud("pessoas", "apessoa", [{ k: "nome", label: "Nome" }, { k: "grupo", label: "Grupo", type: "select", options: GRUPOS }, { k: "cor", label: "Cor", type: "color" }],
@@ -1478,7 +1509,7 @@ const A = {
   editVeiculo: d => formVeiculo(d.id),
   verVeiculo: d => abrirVeiculo(d.id, d.tab || S.vTab || "todas"),
   vTab: d => { S.vTab = d.tab; abrirVeiculo(d.id, d.tab); },
-  editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => formCat(d.id), editPessoa: d => { grupoNovo = d.grupo || "familia"; formPessoa(d.id); }, editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
+  editConta: d => formConta(d.id), editCartao: d => S.data.contas.length ? formCartao(d.id) : toast("Cadastre uma conta primeiro."), editCat: d => { tipoNovo = d.tipo || "despesa"; formCat(d.id); }, subNova: d => formSub(d.cat), subEdit: d => formSub(d.cat, d.n), editPessoa: d => { grupoNovo = d.grupo || "familia"; formPessoa(d.id); }, editFixa: d => S.data.contas.length ? formFixa(d.id) : toast("Cadastre uma conta primeiro."), lancarFixa: d => formLancarFixa(d.id), editOrc: d => formOrc(d.id),
   pagar: d => { const c = by("cartoes", d.id), valor = fatTotal(c.id, S.mes);
     openForm({ title: `Pagar fatura — ${brl(valor)}`, values: { contaId: c.contaId, data: hoje() }, fields: [{ k: "contaId", label: "De qual conta saiu o dinheiro", type: "select", options: optContas }, { k: "data", label: "Data do pagamento", type: "date" }],
       onSave: v => store.set("cartoes", c.id, { ...c, pagas: { ...(c.pagas || {}), [S.mes]: { contaId: v.contaId, data: v.data || hoje(), valor } } }) }); },
