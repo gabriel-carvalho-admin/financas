@@ -293,6 +293,32 @@ function seisMeses() {
     return `<g data-act="irMes" data-v="${x.ym}" style="cursor:pointer"><rect x="${cx - slot / 2}" y="0" width="${slot}" height="${H}" fill="${x.ym === S.mes ? "currentColor" : "transparent"}" opacity=".05"/><rect x="${cx - bw - 1}" y="${base - h(x.r)}" width="${bw}" height="${h(x.r)}" rx="3" fill="#2e9e5b"><title>Receitas: ${brl(x.r)}</title></rect><rect x="${cx + 1}" y="${base - h(x.g)}" width="${bw}" height="${h(x.g)}" rx="3" fill="#d9483b"><title>Despesas: ${brl(x.g)}</title></rect><text x="${cx}" y="${H - 8}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${MESES[Number(x.ym.slice(5)) - 1].slice(0, 3).toLowerCase()}</text></g>`; }).join("")}</svg>
   <div class="sum" style="margin-top:2px"><span><i class="lg" style="background:#2e9e5b"></i>Receitas</span><span><i class="lg" style="background:#d9483b"></i>Despesas</span><span>· toque em um mês para abrir</span></div>`;
 }
+/* ---------- análise personalizada (pessoas + veículos + contas mensais) ---------- */
+const selAn = () => { const c = by("config", "analise") || {}; return { p: new Set(c.p || []), v: new Set(c.v || []), f: new Set(c.f || []) }; };
+const pidDe = l => by("pessoas", l.pessoaId) ? l.pessoaId : "__eu";
+function itensAn(P) { const q = selAn(); if (!q.p.size && !q.v.size && !q.f.size) return []; return noPer("despesa", P).filter(l => !l.emprestimo && (q.p.has(pidDe(l)) || (l.veiculoId && q.v.has(l.veiculoId)) || (l.fixaId && q.f.has(l.fixaId)))); }
+function cardAnalise(P) {
+  const q = selAn(), it = itensAn(P), tot = total(it), chip = (g, id, nome, on) => `<button type="button" class="achip ${on ? "on" : ""}" data-act="selTog" data-g="${g}" data-id="${esc(id)}">${esc(nome)}</button>`;
+  const ps = [["__eu", "Eu"], ...[...S.data.pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).map(p => [p.id, p.nome])];
+  const grupo = (t, g, arr) => arr.length ? `<div class="agr"><small>${t}</small><div>${arr.map(([id, n]) => chip(g, id, n, q[g].has(id))).join("")}</div></div>` : "";
+  const nSel = q.p.size + q.v.size + q.f.size;
+  let res = '<div class="empty">Marque pessoas, veículos ou contas mensais acima para ver a soma e os gráficos.</div>';
+  if (nSel && !it.length) res = `<div class="empty">Nenhum gasto dessas marcações ${P.nome}.</div>`;
+  if (it.length) {
+    const mp = new Map(); it.forEach(l => { const k = pidDe(l); mp.set(k, (mp.get(k) || 0) + l.valor); });
+    const porP = [...mp].map(([id, v]) => ({ id, c: { nome: id === "__eu" ? "Eu" : by("pessoas", id).nome, cor: id === "__eu" ? "#3b7ddd" : by("pessoas", id).cor || "#90a4ae" }, v: r2(v), p: v / (tot || 1) * 100 })).sort((a, b) => b.v - a.v);
+    const rk = porCategoria(it), ms = new Map(); it.forEach(l => { const k = (l.categoriaId || "") + "|" + ((l.subgrupo || "").trim() || "Sem subgrupo"); ms.set(k, (ms.get(k) || 0) + l.valor); });
+    const subs = [...ms].map(([k, v]) => { const [c, sg] = k.split("|"); const ct = cat(c); return { id: k, c: { nome: `${ct.nome} › ${sg}`, cor: ct.cor }, v: r2(v), p: v / (tot || 1) * 100 }; }).sort((a, b) => b.v - a.v);
+    res = `<div class="stats" style="margin:12px 0">${statBox("#d9483b", "∑", tot, `Soma dos gastos ${P.nome} (${it.length} ${it.length === 1 ? "lançamento" : "lançamentos"})`, "neg")}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));align-items:start">
+      <div><h4 class="ah">Gastos por pessoa</h4>${barrasCartoes0(porP)}</div>
+      <div><h4 class="ah">Por categoria <small class="mut">toque para ver as subcategorias</small></h4>${donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v, attr: `data-act="selSub" data-id="${esc(r.id)}"` })), brl(tot))}</div>
+      <div><h4 class="ah">Categorias e subcategorias</h4>${barrasCartoes0(subs.slice(0, 10), true)}</div></div>`;
+  }
+  return `<div class="card"><h3>Análise personalizada <button class="link" data-act="selLimpar">limpar</button></h3><div class="mut" style="font-size:12px;margin-bottom:6px">Marque quem e o que entra na conta. Entram os gastos de qualquer item marcado.</div>
+    ${grupo("Pessoas", "p", ps)}${grupo("Veículos", "v", [...S.data.veiculos].map(x => [x.id, (VEIC_ICO[x.tipo] || "🚗") + " " + x.nome]))}${grupo("Contas mensais", "f", [...S.data.fixas].sort((a, b) => a.nome.localeCompare(b.nome)).map(f => [f.id, f.nome]))}${res}</div>`;
+}
+const barrasCartoes0 = (rows, wide) => { const max = rows[0]?.v || 1; return `<div class="bars">${rows.map(r => `<div class="bar${wide ? " wide" : ""}"><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div><b class="bv">${brl(r.v)}</b></div>`).join("")}</div>`; };
 V.inicio = () => {
   const P = periodo(), PA = periodo(-1), m = S.mes;
   const rs = contasOrd().map(c => ({ c, ...resumoConta(c, m, P.ini, P.fim) }));
@@ -330,6 +356,7 @@ V.inicio = () => {
       ${stat('data-act="nav" data-v="cartoes"', "#5b6ee0", "💳", fat, S.per === "mes" ? "Total faturas" : "Faturas que vencem no período", variacao(fat, fatAnt))}
     </div>
     <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true, 'det" data-k="conta')}</div>
+    ${cardAnalise(P)}
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start">
       <div class="card"><h3>Evolução das despesas <small class="mut" style="font-weight:400">últimos 7 dias</small></h3>${evolucao7()}</div>
       <div class="card"><h3>Últimas despesas <button class="link" data-act="nav" data-v="lancamentos">ver</button></h3>${S.data.lancamentos.filter(l => l.tipo === "despesa" && l.data <= hoje()).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 5).map(linha).join("") || '<div class="empty">Nenhuma despesa ainda.</div>'}</div>
@@ -993,8 +1020,8 @@ function draw() {
 }
 
 /* ---------- painel do início: ordenar e redimensionar os cards ---------- */
-const PAINEL_PAD = { resumo: [12], saldo: [12], contas: [12], "evolucao-das-despesas": [4], "receitas-x-despesas": [4], "ultimas-despesas": [4] };
-const PAINEL_ORD = ["resumo", "saldo", "ranking-de-categorias", "fixas", "contas", "a-pagar-e-a-receber", "cartoes-de-credito", "orcamentos-de-despesas", "despesas-por-recorrencia", "evolucao-das-despesas", "ultimas-despesas", "receitas-x-despesas", "receitas-por-categoria", "a-receber-de-pessoas-e-empresas", "objetivos"];
+const PAINEL_PAD = { resumo: [12], saldo: [12], contas: [12], "analise-personalizada": [12], "evolucao-das-despesas": [4], "receitas-x-despesas": [4], "ultimas-despesas": [4] };
+const PAINEL_ORD = ["resumo", "saldo", "ranking-de-categorias", "fixas", "contas", "analise-personalizada", "a-pagar-e-a-receber", "cartoes-de-credito", "orcamentos-de-despesas", "despesas-por-recorrencia", "evolucao-das-despesas", "ultimas-despesas", "receitas-x-despesas", "receitas-por-categoria", "a-receber-de-pessoas-e-empresas", "objetivos"];
 const PAINEL_NOME = { resumo: "Resumo (saldo, receitas, despesas)", saldo: "Saldo do período", fixas: "Contas mensais", contas: "Contas" };
 const slugW = t => nrm(t).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const wId = n => n.id === "cfixas" ? "fixas" : n.matches(".stats") ? "resumo" : n.matches("[data-k=saldo]") ? "saldo" : slugW(n.querySelector("h3")?.childNodes[0]?.textContent || "painel");
@@ -1370,6 +1397,14 @@ const A = {
         recorrencia: parc ? "parcelada" : "variavel", ...(parc ? { parcela: Number(p[1]), parcelas: Number(p[2]) } : {}), importId: x.importId, descOrig: x.descOrig, ...(naFatura ? { faturaRef: S.mes } : {}) }; });
     try { await store.addMany("lancamentos", novos); toast(`${novos.length} compras importadas (${brl(total(novos))}).`); IMP = null; $("#modal").innerHTML = ""; }
     catch (err) { toast("Não foi possível importar: " + (err.code || err.message)); } },
+  selTog: d => { const q = selAn(), g = d.g; q[g].has(d.id) ? q[g].delete(d.id) : q[g].add(d.id); store.set("config", "analise", { p: [...q.p], v: [...q.v], f: [...q.f] }); },
+  selLimpar: () => store.set("config", "analise", { p: [], v: [], f: [] }),
+  selSub: d => { const P = periodo(), it = itensAn(P).filter(l => (l.categoriaId || "") === d.id), c = cat(d.id), mp = new Map(), cores = ["#4a9be0", "#f29a38", "#2e9e5b", "#9c6ade", "#e0564a", "#26a69a", "#ec6fa0", "#8d6e63", "#607d8b", "#fbc02d"];
+    it.forEach(l => { const k = (l.subgrupo || "").trim() || "Sem subgrupo"; mp.set(k, (mp.get(k) || 0) + l.valor); }); const rows = [...mp].sort((a, b) => b[1] - a[1]), t = total(it);
+    $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>${c.icone} ${esc(c.nome)}</h2><div class="mut" style="margin-bottom:8px">Análise personalizada · ${P.nome} · ${brl(t)}</div>
+    ${donut(rows.map(([n, v], i) => ({ nome: n, cor: cores[i % cores.length], v: r2(v) })), brl(t))}
+    <div class="day">Lançamentos</div>${it.sort((a, b) => b.data.localeCompare(a.data)).map(l => linha(l)).join("")}
+    <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   edPainel: () => { S.edPainel = !S.edPainel; render(); },
   wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
   wReset: () => store.set("config", "painel", { ordem: [], w: {}, h: {}, oculto: [] }),
