@@ -207,7 +207,7 @@ function periodo(desl = 0) {
   if (p === "ano") { const y = Number(S.mes.slice(0, 4)) + desl; return { ini: `${y}-01-01`, fim: `${y}-12-31`, label: `Ano de ${y}`, nome: "no ano", ant: "ano anterior" }; }
   const ym = addMes(S.mes, desl); return { ini: `${ym}-01`, fim: `${ym}-31`, label: `${MESES[Number(ym.slice(5)) - 1]} ${ym.slice(0, 4)}`, nome: "no mês", ant: "mês anterior" };
 }
-const despRank = (P, desp = noPer("despesa", P)) => { let f = false; try { f = localStorage.getItem("rkFat") === "1"; } catch {} if (!f) return desp; const a = P.ini.slice(0, 7), b = P.fim.slice(0, 7);
+const despRank = (P, desp = noPer("despesa", P), key = "rkFat") => { let f = false; try { f = localStorage.getItem(key) === "1"; } catch {} if (!f) return desp; const a = P.ini.slice(0, 7), b = P.fim.slice(0, 7);
   return [...desp.filter(l => !l.cartaoId), ...S.data.lancamentos.filter(l => l.tipo === "despesa" && l.cartaoId && fatMes(l) >= a && fatMes(l) <= b)]; };
 const rkFatOn = () => { try { return localStorage.getItem("rkFat") === "1"; } catch { return false; } };
 const noPer = (tipo, P) => S.data.lancamentos.filter(l => l.tipo === tipo && l.data >= P.ini && l.data <= P.fim);
@@ -297,9 +297,10 @@ function seisMeses() {
   <div class="sum" style="margin-top:2px"><span><i class="lg" style="background:#2e9e5b"></i>Receitas</span><span><i class="lg" style="background:#d9483b"></i>Despesas</span><span>· toque em um mês para abrir</span></div>`;
 }
 /* ---------- análise personalizada (pessoas + veículos + contas mensais) ---------- */
+const anFatOn = () => { try { return localStorage.getItem("anFat") === "1"; } catch { return false; } };
 const selAn = () => { const c = by("config", "analise") || {}; return { p: new Set(c.p || []), v: new Set(c.v || []), f: new Set(c.f || []) }; };
 const pidDe = l => by("pessoas", l.pessoaId) ? l.pessoaId : "__eu";
-function itensAn(P) { const q = selAn(); if (!q.p.size && !q.v.size && !q.f.size) return []; return noPer("despesa", P).filter(l => !l.emprestimo && (q.p.has(pidDe(l)) || (l.veiculoId && q.v.has(l.veiculoId)) || (l.fixaId && q.f.has(l.fixaId)))); }
+function itensAn(P) { const q = selAn(); if (!q.p.size && !q.v.size && !q.f.size) return []; return despRank(P, undefined, "anFat").filter(l => !l.emprestimo && (q.p.has(pidDe(l)) || (l.veiculoId && q.v.has(l.veiculoId)) || (l.fixaId && q.f.has(l.fixaId)))); }
 function cardAnalise(P) {
   const q = selAn(), it = itensAn(P), tot = total(it), chip = (g, id, nome, on) => `<button type="button" class="achip ${on ? "on" : ""}" data-act="selTog" data-g="${g}" data-id="${esc(id)}">${esc(nome)}</button>`;
   const ps = [["__eu", "Eu"], ...[...S.data.pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).map(p => [p.id, p.nome])];
@@ -319,6 +320,7 @@ function cardAnalise(P) {
       <div><h4 class="ah">Categorias e subcategorias</h4>${barrasCartoes0(subs.slice(0, 10), true)}</div></div>`;
   }
   return `<div class="card"><h3>Análise personalizada <button class="link" data-act="selLimpar">limpar</button></h3><div class="mut" style="font-size:12px;margin-bottom:6px">Marque quem e o que entra na conta. Entram os gastos de qualquer item marcado.</div>
+    <div class="seg per" style="margin-bottom:8px"><button class="${anFatOn() ? "" : "on"}" data-act="anModo" data-v="0" title="Gastos pela data em que a compra foi feita">Pela data da compra</button><button class="${anFatOn() ? "on" : ""}" data-act="anModo" data-v="1" title="Contas pagas na data + faturas dos cartões que vencem no período">Com faturas dos cartões</button></div>
     ${grupo("Pessoas", "p", ps)}${grupo("Veículos", "v", [...S.data.veiculos].map(x => [x.id, (VEIC_ICO[x.tipo] || "🚗") + " " + x.nome]))}${grupo("Contas mensais", "f", [...S.data.fixas].sort((a, b) => a.nome.localeCompare(b.nome)).map(f => [f.id, f.nome]))}${res}</div>`;
 }
 const barrasCartoes0 = (rows, wide) => { const max = rows[0]?.v || 1; return `<div class="bars">${rows.map(r => `<div class="bar${wide ? " wide" : ""}"><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div><b class="bv">${brl(r.v)}</b></div>`).join("")}</div>`; };
@@ -1408,6 +1410,7 @@ const A = {
     ${donut(rows.map(([n, v], i) => ({ nome: n, cor: cores[i % cores.length], v: r2(v) })), brl(t))}
     <div class="day">Lançamentos</div>${it.sort((a, b) => b.data.localeCompare(a.data)).map(l => linha(l)).join("")}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
+  anModo: d => { try { localStorage.setItem("anFat", d.v); } catch {} render(); },
   rkModo: d => { try { localStorage.setItem("rkFat", d.v); } catch {} render(); },
   edPainel: () => { S.edPainel = !S.edPainel; render(); },
   wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
