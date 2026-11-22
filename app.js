@@ -213,9 +213,15 @@ function periodo(desl = 0) {
 const despRank = (P, desp = noPer("despesa", P), key = "rkFat", force = false) => { let f = force; try { f = f || localStorage.getItem(key) === "1"; } catch {} if (!f) return desp; const a = P.ini.slice(0, 7), b = P.fim.slice(0, 7);
   return [...desp.filter(l => !l.cartaoId), ...S.data.lancamentos.filter(l => l.tipo === "despesa" && l.cartaoId && fatMes(l) >= a && fatMes(l) <= b)]; };
 const rkFatOn = () => { try { return localStorage.getItem("rkFat") === "1"; } catch { return false; } };
-const noPer = (tipo, P) => S.data.lancamentos.filter(l => l.tipo === tipo && l.data >= P.ini && l.data <= P.fim);
+/* preferências: como contar o cartão e a partir de qual mês os dados valem */
+const prefs = () => by("config", "prefs") || {};
+const modoFatura = () => (prefs().cartao || "fatura") === "fatura";
+const inicioDados = () => prefs().inicio || "2026-11";
+const mesComp = l => l.cartaoId && modoFatura() ? fatMes(l) : ymOf(l.data);
+const noPer = (tipo, P) => { const ini = inicioDados(), mg = S.per === "mes" || S.per === "ano", a = P.ini.slice(0, 7), b = P.fim.slice(0, 7);
+  return S.data.lancamentos.filter(l => l.tipo === tipo && mesComp(l) >= ini && (l.cartaoId && modoFatura() && mg ? mesComp(l) >= a && mesComp(l) <= b : l.data >= P.ini && l.data <= P.fim)); };
 const faturasNoPer = P => { let t = 0; for (const c of S.data.cartoes) for (let ym = ymOf(P.ini); ym <= ymOf(P.fim); ym = addMes(ym, 1)) { const v = dataNoMes(ym, c.vencimento || 10); if (v >= P.ini && v <= P.fim) t += fatTotal(c.id, ym); } return r2(t); };
-const doMes = (tipo, ym = S.mes) => S.data.lancamentos.filter(l => l.tipo === tipo && ymOf(l.data) === ym);
+const doMes = (tipo, ym = S.mes) => ym < inicioDados() ? [] : S.data.lancamentos.filter(l => l.tipo === tipo && mesComp(l) === ym);
 const total = arr => r2(arr.reduce((s, l) => s + l.valor, 0));
 function porCategoria(arr) {
   const m = new Map();
@@ -294,7 +300,7 @@ function evolucao7() {
   <div class="sum" style="margin-top:2px">Total nos 7 dias: <b class="neg">${brl(total(vs.map(v => ({ valor: v }))))}</b> · toque em um dia para ver</div>`;
 }
 function seisMeses() {
-  const ms = Array.from({ length: 6 }, (_, i) => addMes(S.mes, i - 5)), d = ms.map(ym => ({ ym, r: total(doMes("receita", ym)), g: total(doMes("despesa", ym)) })), max = Math.max(...d.map(x => Math.max(x.r, x.g)), 1), W = 320, H = 150, base = H - 24, slot = (W - 12) / 6, bw = 15, h = v => v / max * (base - 12);
+  const ms = Array.from({ length: 6 }, (_, i) => addMes(S.mes, i - 5)).filter(m => m >= inicioDados()), d = ms.map(ym => ({ ym, r: total(doMes("receita", ym)), g: total(doMes("despesa", ym)) })), max = Math.max(...d.map(x => Math.max(x.r, x.g)), 1), W = 320, H = 150, base = H - 24, slot = (W - 12) / Math.max(1, ms.length), bw = 15, h = v => v / max * (base - 12);
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" y1="${base}" x2="${W - 6}" y2="${base}" stroke="currentColor" opacity=".2"/>${d.map((x, i) => { const cx = 6 + slot * i + slot / 2;
     return `<g data-act="irMes" data-v="${x.ym}" style="cursor:pointer"><rect x="${cx - slot / 2}" y="0" width="${slot}" height="${H}" fill="${x.ym === S.mes ? "currentColor" : "transparent"}" opacity=".05"/><rect x="${cx - bw - 1}" y="${base - h(x.r)}" width="${bw}" height="${h(x.r)}" rx="3" fill="#2e9e5b"><title>Receitas: ${brl(x.r)}</title></rect><rect x="${cx + 1}" y="${base - h(x.g)}" width="${bw}" height="${h(x.g)}" rx="3" fill="#d9483b"><title>Despesas: ${brl(x.g)}</title></rect><text x="${cx}" y="${H - 8}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${MESES[Number(x.ym.slice(5)) - 1].slice(0, 3).toLowerCase()}</text></g>`; }).join("")}</svg>
   <div class="sum" style="margin-top:2px"><span><i class="lg" style="background:#2e9e5b"></i>Receitas</span><span><i class="lg" style="background:#d9483b"></i>Despesas</span><span>· toque em um mês para abrir</span></div>`;
@@ -334,7 +340,7 @@ V.inicio = () => {
   const desp = noPer("despesa", P), rec = noPer("receita", P), ef = a => total(a.filter(l => l.efetivada)), bal = r2(total(rec) - total(desp));
   const fat = faturasNoPer(P), fatAnt = faturasNoPer(PA), variacao = (a, b) => b > 0 ? `<span class="chip">${a >= b ? "↗" : "↘"} ${Math.abs((a - b) / b * 100).toFixed(0)}% vs. ${P.ant}</span>` : "";
   const rkD = despRank(P, desp), rk = porCategoria(rkD);
-  const despF = total(despRank(P, desp, "", true)), despFA = total(despRank(PA, noPer("despesa", PA), "", true)), balF = r2(total(rec) - despF);
+  const despF = total(despRank(P, desp, "", modoFatura())), despFA = total(despRank(PA, noPer("despesa", PA), "", modoFatura())), balF = r2(total(rec) - despF);
   const rc = k => total(desp.filter(l => (l.recorrencia || "variavel") === k));
   const stat = (act, cor, sym, v, lbl, extra = "", c = "") => `<div class="card stat clk" ${act}><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small>${extra}</div></div>`;
   const prev = v => `<small class="mut">Previsto ${brl(v)}</small>`;
@@ -1025,7 +1031,16 @@ function verFechamento(ym) {
     <tfoot><tr><td>Total</td><td>${brl(r2(Object.values(f.contas).reduce((a, x) => a + x.app, 0)))}</td><td><b>${brl(f.total)}</b></td><td></td></tr></tfoot></table>
     <div class="acts"><button class="btn ghost" data-act="fechar-mes" data-ym="${ym}">Editar</button><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`;
 }
-V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px;margin-bottom:14px"><h3>Fechamento do mês</h3>
+function formPrefs() {
+  const p = prefs(), meses = Array.from({ length: 30 }, (_, i) => addMes(hoje().slice(0, 7), 6 - i)).map(m => [m, NOME_MES(m)]);
+  openForm({ title: "Cartões e período dos dados", values: { cartao: p.cartao || "fatura", inicio: inicioDados() },
+    fields: [{ k: "cartao", label: "Contar as compras do cartão de crédito", type: "select", options: () => [["fatura", "Pela fatura (respeita o dia de fechamento de cada cartão)"], ["compra", "Pela data da compra"]] },
+      { k: "inicio", label: "Meus dados começam em (meses anteriores não entram em gráficos, totais, orçamentos nem comparações)", type: "select", options: () => meses }],
+    onSave: async v => { await store.set("config", "prefs", { cartao: v.cartao, inicio: v.inicio }); toast("Preferências salvas."); } });
+}
+V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" style="max-width:520px;margin-bottom:14px"><h3>Cartões e período</h3>
+  <div class="row" data-act="prefs"><div class="tx"><div>Contar o cartão ${modoFatura() ? "pela fatura (dia de fechamento)" : "pela data da compra"}</div><small>Dados válidos a partir de ${NOME_MES(inicioDados())} · toque para alterar</small></div><span class="mut">›</span></div></div>
+<div class="card" style="max-width:520px;margin-bottom:14px"><h3>Fechamento do mês</h3>
   <div class="mut" style="font-size:13px;margin:0 0 8px">Todo último dia do mês, anote quanto sobrou em cada conta (carteira, contas correntes…) e compare com o que o app calculou. O valor informado vira o saldo inicial do mês seguinte. O app avisa no Início no último dia do mês.</div>
   <div class="row" data-act="fechar-mes" data-ym="${S.mes}"><div class="tx"><div>Fazer o fechamento de ${NOME_MES(S.mes)}</div><small>${fechDe(S.mes) ? "Já feito — toque para editar" : "Ainda não feito"}</small></div><span class="mut">›</span></div>
   ${fechamentos().map(f => `<div class="row" data-act="verFech" data-ym="${f.mes}"><div class="tx"><div>${NOME_MES(f.mes)}</div><small>Total informado ${brl(f.total)} · ${Object.keys(f.contas).length} ${Object.keys(f.contas).length === 1 ? "conta" : "contas"}</small></div><span class="mut">ver ›</span></div>`).join("")}</div>
@@ -1464,6 +1479,7 @@ const A = {
     ${prev.length ? `<div class="day">Previstos (ainda não ${rec ? "recebidos" : "pagos"})</div>${prev.sort((a, b) => a.data.localeCompare(b.data)).map(l => linha(l)).join("")}` : ""}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   "fechar-mes": d => formFechamento(d.ym), verFech: d => verFechamento(d.ym),
+  prefs: () => formPrefs(),
   edPainel: () => { S.edPainel = !S.edPainel; render(); },
   wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
   wReset: () => store.set("config", "painel", { ordem: [], w: {}, h: {}, oculto: [] }),
