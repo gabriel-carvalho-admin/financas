@@ -590,7 +590,7 @@ function planoOrg() {
     const alvoDe = CATALOGO.find(a => a[3] === c.tipo && a[0] === novoNome(c.id) && alvoId[a[3] + "|" + a[0]] === c.id);
     if (alvoDe) continue;
     const r = REGRAS_ORG.find(r => r[0] === c.tipo && r[1].map(nrm).includes(nrm(c.nome)));
-    if (r) { mapa[c.id] = r; juntar.push({ de: c, para: r[2] }); } else mantidas.push(c);
+    if (r) { mapa[c.id] = r; juntar.push({ de: c, para: r[2] }); } else { const d = c.tipo === "receita" ? "Outras receitas" : "Outros"; mapa[c.id] = [c.tipo, [], d, c.nome]; juntar.push({ de: c, para: d }); }
   }
   // lançamentos e contas mensais afetados
   const mexe = x => { const cOld = by("categorias", x.categoriaId); if (!cOld) return null; let cat = x.categoriaId, sub = x.subgrupo || "", novaCat = null;
