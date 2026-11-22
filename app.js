@@ -504,16 +504,22 @@ function cardFixas() {
   const rowF = (x, g) => { const c = cat(x.f.categoriaId); return `<div class="row${g ? " arow" : ""}" data-key="f:${x.f.id}" data-act="lancarFixa" data-id="${x.f.id}">${g ? grip : ""}${av(c.icone, c.cor)}<div class="tx"><div>${esc(x.f.nome)}</div><small>${esc(c.nome + (x.f.subgrupo ? " › " + x.f.subgrupo : ""))} · ${x.txt}</small></div>
     <div class="r"><div class="b ${x.k === 3 ? 'pos' : 'neg'}">${x.l ? brl(x.l.valor) : "—"}</div><span class="tag" style="background:${x.cor}">${x.tag}</span></div><button data-act="editFixa" data-id="${x.f.id}" title="Editar conta mensal">${ico("mais")}</button></div>`; };
   const rowA = l => { const c = cat(l.categoriaId), k = by("cartoes", l.cartaoId); return `<div class="row arow" data-key="d:${esc(nrm(l.descricao))}" data-act="editL" data-id="${l.id}">${grip}${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)}${k ? " · 💳 " + esc(k.nome) : ""}${l.efetivada === false ? " · pendente" : ""}</small></div><b class="${l.efetivada === false ? 'neg' : 'pos'}">${brl(l.valor)}</b></div>`; };
+  const secoes = (itens, grupos, cfg, vazioTxt) => { const mp = by("config", cfg)?.map || {}, ks = grupos.map(g => g[0]);
+    const grupoDoItem = i => ks.includes(mp[i.key]?.g) ? mp[i.key].g : i.padrao;
+    return grupos.map(([k, n]) => { const g = itens.filter(i => grupoDoItem(i) === k).sort((a, b) => (mp[a.key]?.o ?? 1e9) - (mp[b.key]?.o ?? 1e9) || a.nome.localeCompare(b.nome)), sub = r2(g.reduce((s0, i) => s0 + i.v, 0));
+      return `<div class="agh"><b>${esc(n)}</b><span>${g.length} · <b>${brl(sub)}</b></span></div><div class="agrp" data-g="${esc(k)}" data-cfg="${cfg}">${g.map(i => i.html(true)).join("")}<div class="vazio">${vazioTxt}</div></div>`; }).join(""); };
   let corpo;
   if (t === 1) {
-    const mp = assinMapa(), itens = [...fs.map(x => ({ key: "f:" + x.f.id, nome: x.f.nome, v: x.l?.valor || 0, html: g => rowF(x, g) })), ...avul.map(l => ({ key: "d:" + nrm(l.descricao), nome: l.descricao, v: l.valor, html: () => rowA(l) }))];
-    const grupoDoItem = i => ASSIN_G.some(([k]) => k === mp[i.key]?.g) ? mp[i.key].g : assinPalpite(i.nome);
-    corpo = itens.length || true ? ASSIN_G.map(([k, n]) => { const g = itens.filter(i => grupoDoItem(i) === k).sort((a, b) => (mp[a.key]?.o ?? 1e9) - (mp[b.key]?.o ?? 1e9) || a.nome.localeCompare(b.nome)), sub = r2(g.reduce((s0, i) => s0 + i.v, 0));
-      return `<div class="agh"><b>${n}</b><span>${g.length} · <b>${brl(sub)}</b></span></div><div class="agrp" data-g="${k}">${g.map(i => i.html(true)).join("")}<div class="vazio">Arraste uma assinatura para cá</div></div>`; }).join("") : "";
-    if (!itens.length) corpo = `<div class="empty">${vazio}</div>` + corpo;
-  } else corpo = fs.map(x => rowF(x, false)).join("") || `<div class="empty">${vazio}</div>`;
+    const itens = [...fs.map(x => ({ key: "f:" + x.f.id, nome: x.f.nome, v: x.l?.valor || 0, padrao: assinPalpite(x.f.nome), html: g => rowF(x, g) })), ...avul.map(l => ({ key: "d:" + nrm(l.descricao), nome: l.descricao, v: l.valor, padrao: assinPalpite(l.descricao), html: () => rowA(l) }))];
+    corpo = (itens.length ? "" : `<div class="empty">${vazio}</div>`) + secoes(itens, ASSIN_G, "assin", "Arraste uma assinatura para cá");
+  } else {
+    const nomes = [...new Set(fs.map(x => (x.f.subgrupo || "").trim() || "Outras"))].sort((a, b) => (a === "Outras") - (b === "Outras") || a.localeCompare(b));
+    const extra = Object.values(by("config", "fixord")?.map || {}).map(m => m.g).filter(g => g && !nomes.includes(g));
+    const grupos = [...nomes, ...new Set(extra)].map(n => [n, n]);
+    corpo = fs.length ? secoes(fs.map(x => ({ key: "f:" + x.f.id, nome: x.f.nome, v: x.l?.valor || 0, padrao: (x.f.subgrupo || "").trim() || "Outras", html: g => rowF(x, g) })), grupos, "fixord", "Arraste uma conta para cá") : `<div class="empty">${vazio}</div>`;
+  }
   return `<div class="card" id="cfixas"><h3>Contas mensais <button class="link" data-act="editFixa">+ nova</button></h3>${nav}${corpo}
-  ${fs.length || avul.length ? `<div class="sum">${t === 1 ? `${avul.length + fs.length} assinatura${avul.length + fs.length === 1 ? "" : "s"}${fs.length ? ` · ${pagas} de ${fs.length} contas mensais pagas` : ""} · total do mês: <b>${brl(r2(tot + totAv))}</b><br><small class="mut">Arraste pelo ⠿ para mudar de grupo ou de ordem.</small>` : `${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b>`}</div>` : ""}</div>`;
+  ${fs.length || avul.length ? `<div class="sum">${t === 1 ? `${avul.length + fs.length} assinatura${avul.length + fs.length === 1 ? "" : "s"}${fs.length ? ` · ${pagas} de ${fs.length} contas mensais pagas` : ""} · total do mês: <b>${brl(r2(tot + totAv))}</b><br><small class="mut">Arraste pelo ⠿ para mudar de grupo ou de ordem.</small>` : `${pagas} de ${fs.length} pagas · lançado no mês: <b>${brl(tot)}</b><br><small class="mut">Arraste pelo ⠿ para mudar de grupo ou de ordem.</small>`}</div>` : ""}</div>`;
 }
 // O aviso só aparece quando chega o dia do vencimento (ou depois) e a conta mensal ainda não foi paga
 const fixasVencidas = (ym = S.mes) => fixasMes(ym).filter(x => x.k !== 3 && x.venc <= hoje());
@@ -1677,9 +1683,9 @@ document.addEventListener("pointerdown", e => {
     const fim = () => {
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", fim); window.removeEventListener("pointercancel", fim);
       ar.classList.remove("drag"); document.body.classList.remove("arrastando");
-      const mp = { ...assinMapa() };
+      const cfg = ar.closest(".agrp").dataset.cfg, mp = { ...(by("config", cfg)?.map || {}) };
       document.querySelectorAll(".agrp").forEach(grp => { const vistos = new Set(); [...grp.querySelectorAll(".arow")].forEach(r => { if (vistos.has(r.dataset.key)) return; mp[r.dataset.key] = { g: grp.dataset.g, o: vistos.size }; vistos.add(r.dataset.key); }); });
-      store.set("config", "assin", { map: mp }).then(() => render()).catch(err => toast("Não foi possível salvar: " + (err.code || err.message)));
+      store.set("config", cfg, { map: mp }).then(() => render()).catch(err => toast("Não foi possível salvar: " + (err.code || err.message)));
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", fim); window.addEventListener("pointercancel", fim);
     return;
