@@ -441,6 +441,7 @@ V.cartoes = () => {
 const lancFixa = (f, ym = S.mes) => S.data.lancamentos.find(l => l.fixaId === f.id && l.mesRef === ym);
 function statusFixa(f, ym = S.mes) {
   const l = lancFixa(f, ym), venc = l?.vencimento || dataNoMes(ym, f.dia || 10), dm = d => dataBR(d).slice(0, 5), atras = venc < hoje();
+  if (l?.cartaoId) return { k: 3, l, venc, txt: `No cartão ${by("cartoes", l.cartaoId)?.nome || ""} · fatura de ${MESES[Number(fatMes(l).slice(5)) - 1].toLowerCase()}`, tag: "No cartão", cor: "#5b6ee0", pend: false };
   if (l?.efetivada) return { k: 3, l, venc, txt: `Paga em ${dm(l.data)}`, tag: "Paga", cor: "#2e9e5b", pend: false };
   const pend = ym <= ymOf(hoje());
   if (l) return { k: atras ? 0 : 1, l, venc, txt: `${atras ? "Venceu" : "Vence"} em ${dm(venc)}`, tag: atras ? "Atrasada" : "A pagar", cor: atras ? "#d9483b" : "#f29a38", pend };
@@ -1171,25 +1172,35 @@ const formVeiculo = crud("veiculos", "oveículo", [{ k: "nome", label: "Nome (ex
   o => S.data.lancamentos.some(l => l.veiculoId === o.id) ? "Este veículo tem despesas. Troque o veículo ou exclua as despesas antes." : "");
 const formFixa = crud("fixas", "aconta mensal", [{ k: "nome", label: "Nome (ex.: Água, Luz)" }, { k: "dia", label: "Dia em que costuma vencer", type: "number" }, { k: "categoriaId", label: "Grupo (categoria)", type: "select", redraw: true, options: () => optCats("despesa") },
   { k: "subgrupo", label: "Subgrupo (opcional — ex.: Energia, Internet)", list: v => subsMais(v.categoriaId, [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b))) },
-  { k: "contaId", label: "Conta em que costuma pagar", type: "select", options: optContas }],
-  () => ({ nome: "", dia: 10 }), { in: o => o, out: v => v.nome.trim() ? { nome: v.nome.trim(), dia: Math.max(1, Math.min(31, Math.floor(Number(v.dia) || 10))), categoriaId: v.categoriaId || "", subgrupo: (v.subgrupo || "").trim(), contaId: v.contaId || "" } : (toast("Informe o nome."), null) },
+  { k: "origem", label: "Costuma pagar com", type: "select", options: () => [...optContas().map(([k, n]) => ["c:" + k, n]), ...S.data.cartoes.map(c => ["k:" + c.id, "💳 " + c.nome])] }],
+  () => ({ nome: "", dia: 10 }), { in: o => ({ ...o, origem: o.cartaoId ? "k:" + o.cartaoId : "c:" + (o.contaId || contasOrd()[0]?.id) }), out: v => v.nome.trim() ? { nome: v.nome.trim(), dia: Math.max(1, Math.min(31, Math.floor(Number(v.dia) || 10))), categoriaId: v.categoriaId || "", subgrupo: (v.subgrupo || "").trim(), contaId: (v.origem || "").startsWith("c:") ? v.origem.slice(2) : "", cartaoId: (v.origem || "").startsWith("k:") ? v.origem.slice(2) : "" } : (toast("Informe o nome."), null) },
   null, (o, d) => Promise.all(S.data.lancamentos.filter(l => l.fixaId === o.id && ((l.categoriaId || "") !== d.categoriaId || (l.subgrupo || "") !== d.subgrupo)).map(l => store.set("lancamentos", l.id, { ...l, categoriaId: d.categoriaId, subgrupo: d.subgrupo }))));
 function formLancarFixa(id) {
   const f = by("fixas", id); if (!f) return; if (!S.data.contas.length) return toast("Cadastre uma conta primeiro.");
-  const l = lancFixa(f), mes = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`;
+  const l = lancFixa(f), mes = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`, venc0 = l?.vencimento || dataNoMes(S.mes, f.dia || 10);
+  const cand = () => S.data.lancamentos.filter(x => x.tipo === "despesa" && x.cartaoId && !x.fixaId && !x.emprestimo && Math.abs(diasEntre(x.data, venc0)) <= 45).sort((a, b) => Math.abs(diasEntre(a.data, venc0)) - Math.abs(diasEntre(b.data, venc0)) || a.descricao.localeCompare(b.descricao));
+  const valorDe = o => o.slice(0, 2) === "k:" ? "k" : "c";
   openForm({ title: `${esc(f.nome)} — ${mes}`,
-    values: { categoriaId: l?.categoriaId ?? f.categoriaId ?? "", subgrupo: l ? l.subgrupo || "" : f.subgrupo || "", todos: true, valor: l ? moneyIn(l.valor) : "", vencimento: l?.vencimento || dataNoMes(S.mes, f.dia || 10), paga: !!l?.efetivada, dataPag: l?.efetivada ? l.data : hoje(), contaId: l?.contaId || f.contaId },
-    fields: [{ k: "valor", label: "Valor deste mês (R$)", type: "money" }, { k: "vencimento", label: "Data de vencimento", type: "date" }, { k: "paga", label: "Já paguei", type: "check", redraw: true },
-      { k: "dataPag", label: "Data do pagamento", type: "date", when: v => v.paga }, { k: "contaId", label: "Conta", type: "select", options: optContas },
+    values: { categoriaId: l?.categoriaId ?? f.categoriaId ?? "", subgrupo: l ? l.subgrupo || "" : f.subgrupo || "", todos: true, valor: l ? moneyIn(l.valor) : "", vencimento: venc0, paga: !!l?.efetivada && !l?.cartaoId, dataPag: l?.efetivada ? l.data : hoje(),
+      origem: l?.cartaoId ? "k:" + l.cartaoId : l?.contaId ? "c:" + l.contaId : f.cartaoId ? "k:" + f.cartaoId : "c:" + (f.contaId || contasOrd()[0].id), vinculo: "" },
+    fields: [{ k: "origem", label: "Pagar com", type: "select", redraw: true, options: () => [...optContas().map(([k, n]) => ["c:" + k, n]), ...S.data.cartoes.map(c => ["k:" + c.id, "💳 " + c.nome])] },
+      { k: "vinculo", label: "Esta conta já está na fatura do cartão? Escolha a cobrança para vincular (não conta duas vezes)", type: "select", redraw: true, when: () => !l?.cartaoId && cand().length > 0, options: () => [["", "— não vincular; lançar uma nova —"], ...cand().map(x => [x.id, `${dataBR(x.data).slice(0, 5)} · ${x.descricao} · ${brl(x.valor)} · 💳 ${by("cartoes", x.cartaoId)?.nome || ""}`])] },
+      { k: "valor", label: "Valor deste mês (R$)", type: "money", when: v => !v.vinculo }, { k: "vencimento", label: "Data de vencimento (ou da compra no cartão)", type: "date", when: v => !v.vinculo },
+      { k: "paga", label: "Já paguei", type: "check", redraw: true, when: v => !v.vinculo && valorDe(v.origem) === "c" },
+      { k: "dataPag", label: "Data do pagamento", type: "date", when: v => !v.vinculo && v.paga && valorDe(v.origem) === "c" },
       { k: "titulo", type: "titulo", label: "Grupo e subgrupo" }, { k: "categoriaId", label: "Grupo (categoria)", type: "select", redraw: true, options: () => optCats("despesa") },
       { k: "subgrupo", label: "Subgrupo (opcional)", list: v => subsMais(v.categoriaId, [...new Set([...S.data.fixas, ...S.data.lancamentos].filter(x => x.subgrupo && x.categoriaId === v.categoriaId).map(x => x.subgrupo))].sort((a, b) => a.localeCompare(b))) },
       { k: "todos", label: "Aplicar a esta conta mensal e a todos os meses já lançados", type: "check" }],
-    onSave: async v => { const valor = parseMoney(v.valor); if (valor <= 0 || !v.vencimento) { toast("Informe o valor e o vencimento."); return false; } if (v.paga && !v.dataPag) { toast("Informe a data do pagamento."); return false; }
-      const d = { ...(l || {}), tipo: "despesa", descricao: f.nome, valor, vencimento: v.vencimento, data: v.paga ? v.dataPag : v.vencimento, efetivada: !!v.paga, categoriaId: v.categoriaId || "", subgrupo: (v.subgrupo || "").trim(), contaId: v.contaId, cartaoId: "", contaDestinoId: "", pessoaId: l?.pessoaId || "", recorrencia: "fixa", fixaId: f.id, mesRef: S.mes };
-      l ? await store.set("lancamentos", l.id, d) : await store.add("lancamentos", d);
+    onSave: async v => { const noCartao = valorDe(v.origem) === "k", vinc = v.vinculo ? by("lancamentos", v.vinculo) : null;
+      const valor = vinc ? vinc.valor : parseMoney(v.valor); if (!vinc && (valor <= 0 || !v.vencimento)) { toast("Informe o valor e o vencimento."); return false; } if (!noCartao && v.paga && !v.dataPag) { toast("Informe a data do pagamento."); return false; }
+      const sg = (v.subgrupo || "").trim(), base = { categoriaId: v.categoriaId || "", subgrupo: sg, recorrencia: "fixa", fixaId: f.id, mesRef: S.mes };
+      let d;
+      if (vinc) { d = { ...vinc, ...base, vencimento: vinc.vencimento || vinc.data }; await store.set("lancamentos", vinc.id, d); if (l && l.id !== vinc.id) await store.del("lancamentos", l.id); }
+      else { d = { ...(l || {}), tipo: "despesa", descricao: f.nome, valor, vencimento: v.vencimento, data: noCartao ? v.vencimento : v.paga ? v.dataPag : v.vencimento, efetivada: noCartao ? true : !!v.paga, ...base, contaId: noCartao ? "" : v.origem.slice(2), cartaoId: noCartao ? v.origem.slice(2) : "", contaDestinoId: "", pessoaId: l?.pessoaId || "" };
+        l ? await store.set("lancamentos", l.id, d) : await store.add("lancamentos", d); }
       if (v.todos && ((f.categoriaId || "") !== d.categoriaId || (f.subgrupo || "") !== d.subgrupo || S.data.lancamentos.some(x => x.fixaId === f.id && x.id !== l?.id && ((x.categoriaId || "") !== d.categoriaId || (x.subgrupo || "") !== d.subgrupo)))) {
         await store.set("fixas", f.id, { ...f, categoriaId: d.categoriaId, subgrupo: d.subgrupo });
-        await Promise.all(S.data.lancamentos.filter(x => x.fixaId === f.id && x.id !== l?.id).map(x => store.set("lancamentos", x.id, { ...x, categoriaId: d.categoriaId, subgrupo: d.subgrupo }))); } },
+        await Promise.all(S.data.lancamentos.filter(x => x.fixaId === f.id && x.id !== l?.id && x.id !== vinc?.id).map(x => store.set("lancamentos", x.id, { ...x, categoriaId: d.categoriaId, subgrupo: d.subgrupo }))); } },
     onDelete: l ? () => store.del("lancamentos", l.id) : null, delLabel: "Apagar lançamento do mês" });
 }
 const formProjeto = crud("projetos", "oprojeto", [{ k: "nome", label: "Nome do projeto / evento" }, { k: "cliente", label: "Cliente" }, { k: "data", label: "Data do evento", type: "date" }, { k: "valor", label: "Valor do contrato (R$)", type: "money" }, { k: "status", label: "Situação", type: "select", options: [["andamento", "Em andamento"], ["concluido", "Concluído"]] }, { k: "cor", label: "Cor", type: "color" }],
