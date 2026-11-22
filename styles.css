@@ -284,3 +284,7 @@ tr.drag td{background:color-mix(in srgb,var(--pri) 12%,var(--card))} tr.drag .gr
 .top .hb[data-w]{font-size:19px}.top .hb[data-w].on{background:color-mix(in srgb,var(--pri) 16%,transparent)}
 
 .orgl{margin:4px 0 8px;padding-left:18px;font-size:14px}.orgl li{margin:2px 0}
+
+.sl{transition:opacity .15s,stroke-width .15s}.sl.clk{cursor:pointer}.sl:hover{stroke-width:7.6}.sl.dim{opacity:.35}.leg [data-sl]:hover{background:var(--bg2,rgba(127,127,127,.12));border-radius:8px}
+.bar:has(.bv){grid-template-columns:92px 1fr auto}.bv{font-size:12px;white-space:nowrap}
+.ct{pointer-events:none}

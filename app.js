@@ -227,14 +227,21 @@ function barras(rows, clic) {
   const max = rows[0].v || 1;
   return `<div class="bars">${rows.slice(0, 8).map(r => `<div class="bar ${clic ? "clk" : ""}" ${clic ? `data-act="det" data-k="cat" data-id="${esc(r.id)}"` : ""}><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div></div>`).join("")}</div>`;
 }
+function barrasCartoes(rows) {
+  const max = rows[0]?.v || 1;
+  return `<div class="bars">${rows.map(r => `<div class="bar clk" data-act="abrirCartao" data-id="${r.id}"><span class="n">${esc(r.c.nome)}</span><div><div class="t" style="width:${Math.max(4, r.v / max * 100)}%;background:${esc(r.c.cor)}">${r.p.toFixed(1)}%</div></div><b class="bv">${brl(r.v)}</b></div>`).join("")}</div>`;
+}
 function donut(segs, centro) {
   const t = segs.reduce((s, x) => s + x.v, 0);
   if (!t) return '<div class="empty">Sem dados neste mês.</div>';
   let acc = 0;
-  const arcs = segs.filter(s => s.v > 0).map(s => { const p = s.v / t * 100, o = 25 - acc; acc += p; return `<circle cx="21" cy="21" r="15.915" fill="none" stroke="${esc(s.cor)}" stroke-width="6.5" stroke-dasharray="${p} ${100 - p}" stroke-dashoffset="${o}"/>`; }).join("");
-  return `<svg class="donut" viewBox="0 0 42 42">${arcs}<text x="21" y="22" text-anchor="middle" font-size="3.4" font-weight="700" fill="currentColor">${esc(centro)}</text></svg>
-  <div class="leg">${segs.map(s => `<div ${s.attr ? s.attr + ' class="clk"' : ""}><i style="background:${esc(s.cor)}"></i><span>${esc(s.nome)}</span><b>${brl(s.v)}</b></div>`).join("")}</div>`;
+  const arcs = segs.filter(s => s.v > 0).map(s => { const p = s.v / t * 100, o = 25 - acc; acc += p; return `<circle class="sl${s.attr ? " clk" : ""}" ${s.attr || ""} data-sl="${esc(s.nome)}|${brl(s.v)}|${p.toFixed(1)}%" cx="21" cy="21" r="15.915" fill="none" stroke="${esc(s.cor)}" stroke-width="6.5" stroke-dasharray="${p} ${100 - p}" stroke-dashoffset="${o}"><title>${esc(s.nome)} — ${brl(s.v)} (${p.toFixed(1)}%)</title></circle>`; }).join("");
+  return `<svg class="donut" viewBox="0 0 42 42">${arcs}<text class="ct" data-c="${esc(centro)}" x="21" y="22" text-anchor="middle" font-size="3.4" font-weight="700" fill="currentColor">${esc(centro)}</text></svg>
+  <div class="leg">${segs.map(s => `<div data-sl="${esc(s.nome)}|${brl(s.v)}|${(s.v / t * 100).toFixed(1)}%" ${s.attr ? s.attr + ' class="clk"' : ""}><i style="background:${esc(s.cor)}"></i><span>${esc(s.nome)}</span><small class="mut">${(s.v / t * 100).toFixed(1)}%</small><b>${brl(s.v)}</b></div>`).join("")}</div>`;
 }
+document.addEventListener("mouseover", e => { const el = e.target.closest?.("[data-sl]"), box = (el || e.target).closest?.(".card,.modal"); const ct = box?.querySelector(".ct"); if (!ct) return;
+  box.querySelectorAll(".sl").forEach(c => c.classList.toggle("dim", !!el && c.dataset.sl !== el.dataset.sl));
+  if (el) { const [n, v, p] = el.dataset.sl.split("|"); ct.setAttribute("font-size", "2.4"); ct.innerHTML = `<tspan x="21" dy="-1.2">${n.length > 16 ? n.slice(0, 15) + "…" : n}</tspan><tspan x="21" dy="3.4" font-size="3">${v}</tspan><tspan x="21" dy="3" font-size="2.2">${p}</tspan>`; } else { ct.setAttribute("font-size", "3.4"); ct.textContent = ct.dataset.c; } });
 function diario(arr, cor) {
   const n = ultimoDia(S.mes), dias = Array(n).fill(0);
   arr.forEach(l => dias[Number(l.data.slice(8)) - 1] += l.valor);
@@ -427,7 +434,7 @@ V.cartoes = () => {
   const disp = r2(cs.reduce((s, c) => s + (c.limite || 0) - emAberto(c), 0)), fat = r2(cs.reduce((s, c) => s + fatTotal(c.id, m), 0));
   return `<div class="tools"><h2 style="flex:1">Cartões</h2><button class="btn" data-act="editCartao">Novo cartão</button></div>
   ${cs.length ? `<div class="grid cc">${cards}</div><div class="sum"><span>Limite disponível: <b>${brl(disp)}</b></span><span>Total de faturas no mês: <b>${brl(fat)}</b></span></div>${(() => { const g = graficosCartoes(""); return `<div class="stats" style="margin:14px 0">${statBox("#d9483b", "💳", g.tot, "Gasto no cartão de crédito em " + MESES[Number(m.slice(5)) - 1].toLowerCase())}</div>
-  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start"><div class="card"><h3>Gastos por cartão</h3>${g.porC.length ? barras(g.porC) : '<div class="empty">Sem gastos nas faturas deste mês.</div>'}</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start"><div class="card"><h3>Gastos por cartão</h3>${g.porC.length ? barrasCartoes(g.porC) : '<div class="empty">Sem gastos nas faturas deste mês.</div>'}</div>
   <div class="card"><h3>Gastos por categoria <span class="mut" style="font-weight:400;font-size:12px">toque para ver as subcategorias</span></h3>${g.pizza}</div></div>`; })()}<div class="sum">Toque em um cartão para ver os gastos, os gráficos e registrar o pagamento da fatura.</div>` : '<div class="card empty">Nenhum cartão cadastrado.</div>'}`;
 };
 
