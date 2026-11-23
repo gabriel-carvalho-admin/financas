@@ -13,7 +13,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const r2 = n => Math.round(n * 100) / 100;
 const brl = v => (v < -0.005 ? "-" : "") + "R$ " + Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const parseMoney = s => { s = String(s ?? "").trim().replace(/[R$\s]/g, ""); if (s.includes(",")) s = s.replace(/\./g, "").replace(",", "."); const n = parseFloat(s); return isFinite(n) ? r2(n) : 0; };
+const parseMoney = s => { s = String(s ?? "").trim().replace(/[R$\s]/g, ""); if (s.includes(",")) s = s.replace(/\./g, "").replace(",", "."); else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ""); const n = parseFloat(s); return isFinite(n) ? r2(n) : 0; };
 const pad = n => String(n).padStart(2, "0");
 const hoje = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const dataBR = d => d.split("-").reverse().join("/");
@@ -110,7 +110,7 @@ async function iniciar() {
     const ouvir = (n, k) => F.onSnapshot(col(n), s => { S[k] = s.docs.map(d => ({ ...d.data(), id: d.id })); ok.add(n); if (ok.size === 2) S.pronto = true; atualizar(); },
       e => toast(e.code === "permission-denied" ? "Esta conta não tem acesso aos projetos." : "Erro ao ler dados: " + e.code));
     ouvir("projetos", "projetos"); ouvir("movProjeto", "movs");
-    api = { add: d => F.addDoc(col("movProjeto"), d), del: i => F.deleteDoc(F.doc(col("movProjeto"), i)), sair: () => fb.A.signOut(fb.auth) };
+    api = { add: d => F.addDoc(col("movProjeto"), d), del: i => F.deleteDoc(F.doc(col("movProjeto"), i)), sair: async () => { try { await fb.A.signOut(fb.auth); await fb.F.terminate(fb.db); await fb.F.clearIndexedDbPersistence(fb.db); } catch (e) {} location.reload(); } };
     tela();
   });
 }
