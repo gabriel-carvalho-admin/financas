@@ -619,11 +619,23 @@ function orcLista(curto) {
 V.orcamentos = () => `<div class="tools"><h2 style="flex:1">Orçamentos</h2><button class="btn" data-act="editOrc">Novo orçamento</button></div>
   <div class="card"><div class="sum" style="margin:0 0 6px">Valor que sobra em cada categoria neste mês</div>${orcLista(false)}</div>`;
 
+function empilhado(tipo) {
+  const ms = Array.from({ length: 6 }, (_, i) => addMes(S.mes, i - 5)).filter(m => m >= inicioDados()), dados = ms.map(ym => ({ ym, rk: porCategoria(doMes(tipo, ym)) })), tot = new Map();
+  dados.forEach(d => d.rk.forEach(r => tot.set(r.id, { c: r.c, v: (tot.get(r.id)?.v || 0) + r.v })));
+  const top = [...tot].sort((a, b) => b[1].v - a[1].v).slice(0, 5); if (!top.length) return '<div class="empty">Sem dados nestes meses.</div>';
+  const ids = new Set(top.map(t => t[0])), max = Math.max(...dados.map(d => d.rk.reduce((a, r) => a + r.v, 0)), 1), W = 320, H = 170, base = H - 22, slot = (W - 12) / ms.length, bw = Math.min(34, slot - 12);
+  const g = dados.map((d, i) => { const cx = 6 + slot * i + slot / 2; let y = base;
+    const segs = [...top.map(([id, o]) => ({ n: o.c.nome, cor: o.c.cor, v: d.rk.find(r => r.id === id)?.v || 0 })), { n: "Outras", cor: "#9aa4b5", v: d.rk.filter(r => !ids.has(r.id)).reduce((a, r) => a + r.v, 0) }].filter(x => x.v > 0);
+    return `<g data-act="irMes" data-v="${d.ym}" style="cursor:pointer">${segs.map(x => { const h = x.v / max * (base - 14); y -= h; return `<rect x="${cx - bw / 2}" y="${y.toFixed(1)}" width="${bw}" height="${Math.max(h - 1, 0.5).toFixed(1)}" rx="2" fill="${esc(x.cor)}"><title>${esc(x.n)}: ${brl(x.v)}</title></rect>`; }).join("")}<text x="${cx}" y="${H - 7}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${MESES[Number(d.ym.slice(5)) - 1].slice(0, 3).toLowerCase()}</text></g>`; }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" y1="${base}" x2="${W - 6}" y2="${base}" stroke="currentColor" opacity=".2"/>${g}</svg>
+  <div class="sum" style="margin-top:2px">${top.map(([, o]) => `<span><i class="lg" style="background:${esc(o.c.cor)}"></i>${esc(o.c.nome)}</span>`).join("")}<span><i class="lg" style="background:#9aa4b5"></i>Outras</span></div>`;
+}
 V.relatorios = () => {
   const arr = doMes(S.aba), rk = porCategoria(arr), cor = S.aba === "despesa" ? "#d9483b" : "#2e9e5b";
   return `<div class="tabs"><button class="d ${S.aba === "despesa" ? "on" : ""}" data-act="aba" data-v="despesa">Despesas</button><button class="rc ${S.aba === "receita" ? "on" : ""}" data-act="aba" data-v="receita">Receitas</button></div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(290px,1fr))">
     <div class="card"><h3>Ranking de categorias</h3>${barras(rk)}</div>
+    <div class="card"><h3>${S.aba === "despesa" ? "Despesas" : "Receitas"} por categoria <small class="mut" style="font-weight:400">últimos 6 meses</small></h3>${empilhado(S.aba)}</div>
     <div class="card"><h3>Evolução diária</h3>${arr.length ? diario(arr, cor) : '<div class="empty">Sem dados neste mês.</div>'}</div>
     <div class="card"><h3>Grupos e subgrupos</h3>${rk.length ? rk.map(g => { const sm = new Map(); arr.filter(l => (l.categoriaId || "") === g.id).forEach(l => sm.set(l.subgrupo || "Geral", (sm.get(l.subgrupo || "Geral") || 0) + l.valor)); const subs = [...sm].sort((a, b) => b[1] - a[1]);
       return `<div class="gr"><div class="gl"><i class="lg" style="background:${esc(g.c.cor)}"></i><b>${esc(g.c.icone + " " + g.c.nome)}</b><span>${g.p.toFixed(0)}%</span><b>${brl(g.v)}</b></div><div class="prog"><i style="width:${g.v / (rk[0].v || 1) * 100}%;background:${esc(g.c.cor)}"></i></div>
@@ -1181,7 +1193,7 @@ ${cardTemas()}
 function draw() {
   const root = $("#root");
   if (S.carregado || S.demo) sincronizarNotas(by("config", "notas"), true);
-  sincronizarTema();
+  sincronizarTema(); animarVista();
   if (!S.user && !S.demo) return;
   if (!$("#app")) {
     root.innerHTML = `<div id="app"><header class="top"><button class="hb" data-act="menu" aria-label="Abrir menu">${ico("menu")}</button><div class="logo">${LOGO}<span>meu<b>financeiro</b></span></div><span class="sp"></span>
@@ -1499,7 +1511,23 @@ function exportarBackup() {
 
 
 /* ---------- temas (aparência e animações) ---------- */
-const TEMAS_PRONTOS = [{ id: "suave", nome: "Suave (exemplo)",
+const ANIM_GRAFICOS = "@keyframes mfGrowX{from{transform:scaleX(0)}to{transform:none}}@keyframes mfGrowY{from{transform:scaleY(0)}to{transform:none}}@keyframes mfDraw{from{stroke-dashoffset:3000}to{stroke-dashoffset:0}}@keyframes mfFade{from{opacity:0}}@keyframes mfUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}@keyframes mfDonut{from{opacity:0;transform:rotate(-90deg) scale(.85)}to{opacity:1;transform:none}}"
+ + "body.mf-anim .bar .t{transform-origin:left;animation:mfGrowX .8s cubic-bezier(.2,.8,.2,1) both}body.mf-anim .prog i{transform-origin:left;animation:mfGrowX .9s cubic-bezier(.2,.8,.2,1) both}"
+ + "body.mf-anim svg polyline{stroke-dasharray:3000;animation:mfDraw 1.3s ease both}body.mf-anim svg polygon{animation:mfFade 1.4s ease both}"
+ + "body.mf-anim svg rect[rx]{transform-box:fill-box;transform-origin:bottom;animation:mfGrowY .8s cubic-bezier(.2,.8,.2,1) both}body.mf-anim .donut{animation:mfDonut .9s ease both}body.mf-anim main .card{animation:mfUp .45s ease both}"
+ + "body.mf-anim .bar:nth-child(2) .t,body.mf-anim svg g:nth-child(3) rect[rx]{animation-delay:.06s}body.mf-anim .bar:nth-child(3) .t,body.mf-anim svg g:nth-child(4) rect[rx]{animation-delay:.12s}body.mf-anim .bar:nth-child(4) .t,body.mf-anim svg g:nth-child(5) rect[rx]{animation-delay:.18s}body.mf-anim .bar:nth-child(5) .t,body.mf-anim svg g:nth-child(6) rect[rx]{animation-delay:.24s}body.mf-anim .bar:nth-child(n+6) .t,body.mf-anim svg g:nth-child(n+7) rect[rx]{animation-delay:.3s}"
+ + "svg rect[rx]{transition:filter .15s}svg rect[rx]:hover{filter:brightness(1.12)}svg circle{transition:r .15s}svg circle:hover{r:5}@media (prefers-reduced-motion:reduce){body.mf-anim *{animation:none!important}}";
+const FLUXO_CSS = "body{background:radial-gradient(1100px 520px at 8% -8%,#dfeaff 0,transparent 62%),radial-gradient(900px 520px at 100% 0,#dcf4ea 0,transparent 55%),var(--bg);background-attachment:fixed}html.dark body{background:radial-gradient(1000px 500px at 8% -8%,#16264a 0,transparent 60%),radial-gradient(800px 500px at 100% 0,#0f2e2a 0,transparent 55%),var(--bg);background-attachment:fixed}"
+ + ".top,.side{background:color-mix(in srgb,var(--card) 80%,transparent);backdrop-filter:blur(14px)}.card{border-radius:20px;border:1px solid color-mix(in srgb,var(--card) 60%,var(--line));transition:transform .22s ease,box-shadow .22s ease}.card:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(40,70,130,.14)}"
+ + ".fab,.btn:not(.ghost):not(.danger){background:linear-gradient(135deg,var(--pri),#2bb3a3);transition:transform .15s ease,filter .15s ease,box-shadow .2s}.fab:hover,.btn:not(.ghost):not(.danger):hover{filter:brightness(1.07);box-shadow:0 8px 20px color-mix(in srgb,var(--pri) 35%,transparent)}.btn:active,.fab:active{transform:scale(.95)}"
+ + ".side button,.bot button{transition:background .18s ease,transform .15s ease}.side button:hover{transform:translateX(2px)}.side button.on,.bot button.on{box-shadow:0 6px 16px color-mix(in srgb,var(--pri) 28%,transparent)}"
+ + ".row{border-radius:12px;transition:background .15s ease}.row:hover{background:var(--soft)}.val,.b,.bv{font-variant-numeric:tabular-nums}.mes{box-shadow:inset 0 0 0 1px var(--line)}"
+ + ".modal{border-radius:24px;animation:mfPop .26s cubic-bezier(.2,.8,.2,1)}.toast{animation:mfUp .3s ease}@keyframes mfPop{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}";
+const TEMAS_PRONTOS = [{ id: "fluxo", nome: "Fluxo (animado)", graf: true,
+  claro: { "--bg": "#f3f6fc", "--card": "#ffffff", "--ink": "#1b2437", "--mut": "#66728a", "--line": "#e4e9f3", "--soft": "#eef2fa", "--pri": "#3b7ddd", "--shadow": "0 1px 2px rgba(40,70,130,.06),0 10px 28px rgba(40,70,130,.09)" },
+  escuro: { "--bg": "#0e1320", "--card": "#171d2c", "--ink": "#e8edf7", "--mut": "#97a3ba", "--line": "#262e42", "--soft": "#1f2638", "--pri": "#6ba3f5", "--shadow": "0 1px 3px rgba(0,0,0,.45)" },
+  css: FLUXO_CSS },
+  { id: "suave", nome: "Suave (verde)", graf: true,
   claro: { "--bg": "#f3f7f5", "--card": "#ffffff", "--ink": "#17332a", "--mut": "#6a7f77", "--line": "#e2ebe6", "--soft": "#ecf3ef", "--pri": "#1f8a63", "--ok": "#1f8a63", "--shadow": "0 1px 2px rgba(20,60,45,.05),0 10px 28px rgba(20,60,45,.08)" },
   escuro: { "--bg": "#0f1714", "--card": "#17211d", "--ink": "#e6f0ec", "--mut": "#8fa69d", "--line": "#243630", "--soft": "#1d2b26", "--pri": "#37b886", "--shadow": "0 1px 3px rgba(0,0,0,.4)" },
   css: ".card{border-radius:18px;border-color:transparent;transition:transform .2s ease,box-shadow .2s ease}.card:hover{transform:translateY(-2px)}.btn,.fab{transition:transform .15s ease,filter .15s ease}.btn:active,.fab:active{transform:scale(.95)}.fab:hover{transform:scale(1.08)}.row{transition:background .15s ease}.modal{animation:mfPop .25s ease}@keyframes mfPop{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}" }];
@@ -1510,9 +1538,10 @@ const temaAtivo = () => temasTodos().find(t => t.id === temasSalvos().ativo) || 
 function cssTema(t) {
   const bloco = (sel, o) => o ? `${sel}{${Object.entries(o).filter(([k, v]) => /^--[\w-]+$/.test(k) && !/[{};<]/.test(String(v))).map(([k, v]) => `${k}:${v}`).join(";")}}` : "";
   const extra = String(t.css || "").replace(/@import[^;]*;?/gi, "").replace(/url\s*\(\s*['"]?\s*(https?:)?\/\//gi, "none(").replace(/<\/?style/gi, "");
-  return bloco(":root", t.claro) + bloco("html.dark", t.escuro) + extra;
+  return bloco(":root", t.claro) + bloco("html.dark", t.escuro) + extra + (t.graf ? ANIM_GRAFICOS : "");
 }
-let TEMA_APLICADO = null;
+let TEMA_APLICADO = null, ULT_VISTA = "", T_ANIM = 0;
+function animarVista() { const k = [S.view, S.mes, S.aba, S.per, S.carregado].join("|"); if (k === ULT_VISTA) return; ULT_VISTA = k; document.body.classList.add("mf-anim"); clearTimeout(T_ANIM); T_ANIM = setTimeout(() => document.body.classList.remove("mf-anim"), 2000); }
 function aplicarTema(t) {
   const chave = t ? JSON.stringify(t) : ""; if (chave === TEMA_APLICADO) return; TEMA_APLICADO = chave;
   let el = document.getElementById("tema-css"); if (!el) { el = document.createElement("style"); el.id = "tema-css"; document.head.appendChild(el); }
@@ -1526,12 +1555,13 @@ function temaInicial() {
   } catch (e) {}
 }
 temaInicial();
-const sincronizarTema = () => { if (S.carregado || S.demo) aplicarTema(temaAtivo()); };
-async function salvarTemas(o) { await store.set("config", "temas", { lista: temasSalvos().lista || [], ativo: temasSalvos().ativo || "", ...o }); }
+const sincronizarTema = () => { if (!(S.carregado || S.demo)) return; const t = temaAtivo(), g = !!(t?.graf || temasSalvos().graficos); aplicarTema(t || g ? { ...(t || {}), graf: g } : null); };
+async function salvarTemas(o) { await store.set("config", "temas", { lista: temasSalvos().lista || [], ativo: temasSalvos().ativo || "", graficos: !!temasSalvos().graficos, ...o }); }
 const cardTemas = () => { const at = temasSalvos().ativo || "", linha = (id, nome, sub, del) => `<div class="row" data-act="tema" data-id="${esc(id)}"><div class="tx"><div>${esc(nome)}</div><small>${esc(sub)}</small></div>${del ? `<button class="btn danger" data-act="temaDel" data-id="${esc(id)}">Excluir</button>` : ""}<span class="ck ${at === id || (!at && id === "padrao") ? "on" : ""}">✓</span></div>`;
   return `<div class="card" style="max-width:520px;margin-bottom:14px"><h3>Aparência e animações</h3>
   <div class="mut" style="font-size:13px;margin:0 0 8px">O <b>Padrão</b> é o visual original e nunca muda. Peça um tema novo ao Claude e cole aqui. Se algo ficar estranho, toque em Padrão (ou abra o app com <b>?tema=padrao</b> no endereço).</div>
   ${linha("padrao", "Padrão", "Visual original do app", false)}${TEMAS_PRONTOS.map(t => linha(t.id, t.nome, "Tema pronto", false)).join("")}${(temasSalvos().lista || []).map(t => linha(t.id, t.nome, "Criado por você", true)).join("")}
+  <div class="row" data-act="temaGraf"><div class="tx"><div>Gráficos e telas animados</div><small>Barras crescem, linhas se desenham, cards sobem ao abrir (vale em qualquer tema)</small></div><span class="ck ${temasSalvos().graficos || temaAtivo()?.graf ? "on" : ""}">✓</span></div>
   <div class="row" data-act="temaImp"><div class="tx"><div>Importar tema novo (colar código)</div><small>Cole o código que o Claude gerou</small></div><span class="mut">›</span></div>
   <div class="row" data-act="temaModelo"><div class="tx"><div>Copiar o formato do tema</div><small>Cole no Claude para ele saber como gerar</small></div></div></div>`; };
 
@@ -1676,14 +1706,15 @@ const A = {
   fechar2: (d, e) => { if (d.force || e.target.classList.contains("ov")) $("#modal2").innerHTML = ""; }, verNota: d => { const l = by("lancamentos", d.id); if (l?.nota) verNotaImg(l.nota, l.descricao); },
   fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) { $("#modal").innerHTML = ""; IMP = null; } },
   dark: () => { const on = document.documentElement.classList.toggle("dark"); try { localStorage.setItem("mf-dark", on ? "1" : "0"); } catch (e) {} render(); },
-  tema: async d => { if (d.id === "padrao" || temasTodos().some(t => t.id === d.id)) { await salvarTemas({ ativo: d.id === "padrao" ? "" : d.id }); aplicarTema(temaAtivo()); render(); } },
-  temaDel: async (d, e) => { e.stopPropagation(); await salvarTemas({ lista: (temasSalvos().lista || []).filter(t => t.id !== d.id), ativo: temasSalvos().ativo === d.id ? "" : temasSalvos().ativo }); aplicarTema(temaAtivo()); render(); toast("Tema excluído."); },
+  tema: async d => { if (d.id === "padrao" || temasTodos().some(t => t.id === d.id)) { await salvarTemas({ ativo: d.id === "padrao" ? "" : d.id }); sincronizarTema(); render(); } },
+  temaDel: async (d, e) => { e.stopPropagation(); await salvarTemas({ lista: (temasSalvos().lista || []).filter(t => t.id !== d.id), ativo: temasSalvos().ativo === d.id ? "" : temasSalvos().ativo }); sincronizarTema(); render(); toast("Tema excluído."); },
+  temaGraf: async () => { if (temaAtivo()?.graf) return toast("Este tema já vem com animações."); await salvarTemas({ graficos: !temasSalvos().graficos }); sincronizarTema(); render(); },
   temaModelo: async () => { const txt = JSON.stringify(TEMA_MODELO, null, 1); try { await navigator.clipboard.writeText(txt); toast("Formato copiado. Cole no Claude."); } catch (e) { $("#modal2").innerHTML = `<div class="ov" data-act="fechar2"><div class="modal"><h2>Formato do tema</h2><textarea style="width:100%;height:220px;font:12px monospace">${esc(txt)}</textarea><div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar2" data-force="1">Fechar</button></div></div></div>`; } },
   temaImp: () => { $("#modal2").innerHTML = `<div class="ov" data-act="fechar2"><div class="modal"><h2>Importar tema</h2><div class="mut" style="font-size:13px;margin-bottom:8px">Cole aqui o código do tema gerado pelo Claude.</div><textarea id="tema-txt" style="width:100%;height:220px;font:12px monospace" placeholder='{ "nome": "...", "claro": {...}, "escuro": {...}, "css": "..." }'></textarea><div class="acts"><button class="btn ghost" data-act="fechar2" data-force="1">Cancelar</button><span class="sp"></span><button class="btn" data-act="temaSalvarImp">Salvar e aplicar</button></div></div></div>`; },
   temaSalvarImp: async () => { let t; try { t = JSON.parse($("#tema-txt").value); } catch (e) { return toast("Código inválido. Cole o JSON completo."); }
     if (!t || typeof t !== "object" || !t.nome) return toast("O tema precisa ter um nome.");
     const novo = { id: "t" + Date.now().toString(36), nome: String(t.nome).slice(0, 40), claro: t.claro || {}, escuro: t.escuro || {}, css: String(t.css || "").slice(0, 20000) };
-    await salvarTemas({ lista: [...(temasSalvos().lista || []), novo], ativo: novo.id }); aplicarTema(temaAtivo()); $("#modal2").innerHTML = ""; render(); toast("Tema aplicado."); },
+    await salvarTemas({ lista: [...(temasSalvos().lista || []), novo], ativo: novo.id }); sincronizarTema(); $("#modal2").innerHTML = ""; render(); toast("Tema aplicado."); },
   csv: exportarCSV, backup: exportarBackup,
   sair: () => S.demo ? location.reload() : sairLimpando(fb)
 };
