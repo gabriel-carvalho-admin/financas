@@ -1051,6 +1051,16 @@ function eventosMes(ym) {
   return ev.filter(e => e.d.startsWith(ym)).sort((p, q) => p.d.localeCompare(q.d) || p.ord - q.ord || p.rot.localeCompare(q.rot));
 }
 const evHtml = e => `<div class="evr"><i class="evd" style="background:${e.cor}"></i><div class="tx"><b>${e.t === "venc" ? "💳" : e.t === "fech" ? "✂️" : "🔔"} ${esc(e.rot)}</b><small>${esc(e.sub)}</small></div>${e.v != null && e.v > 0 ? `<b class="${e.ok ? "pos" : "neg"}">${S.priv ? "••" : brl(e.v)}</b>` : ""}${e.ok ? '<span class="tag" style="background:#2e9e5b">✓</span>' : ""}</div>`;
+// Datas importantes no mesmo formato dos grupos de entradas e despesas
+function datasGrupoHtml(ev) {
+  if (!ev.length) return '<div class="empty">Cadastre cartões e contas mensais para ver as datas aqui.</div>';
+  const G = [["venc", "💳 Vencimento de faturas", "#d9483b"], ["fech", "✂️ Fechamento de faturas", "#3b7ddd"], ["fixa", "🔔 Contas mensais", "#f29a38"]];
+  const aPagar = r2(ev.filter(e => e.t !== "fech" && !e.ok && e.v > 0).reduce((t, e) => t + e.v, 0));
+  return `<div class="sec"><span>A pagar no mês</span><b class="neg">${S.priv ? "••" : brl(aPagar)}</b></div>` + G.map(([t, nome, cor]) => { const it = ev.filter(e => e.t === t); if (!it.length) return "";
+    const tot = r2(it.filter(e => !e.ok && e.v > 0).reduce((x, e) => x + e.v, 0));
+    return `<div class="grp"><div class="gl" style="margin:8px 0 2px"><i class="lg" style="background:${cor}"></i><b>${nome}</b><span>${it.length} ${it.length === 1 ? "data" : "datas"}</span>${t === "fech" ? "" : `<b class="${tot ? "neg" : "pos"}">${S.priv ? "••" : brl(tot)}</b>`}</div>` +
+      it.map(e => `<div class="row evl2"><b class="evdn" style="background:${e.cor}">${Number(e.d.slice(8))}</b><div class="tx"><div>${esc(e.rot)}</div><small>${esc(e.sub)}</small></div>${e.v != null && e.v > 0 ? `<b class="${e.ok ? "pos" : "neg"}">${S.priv ? "••" : brl(e.v)}</b>` : ""}${e.ok ? '<span class="tag" style="background:#2e9e5b">✓</span>' : ""}</div>`).join("") + "</div>"; }).join("");
+}
 V.calendario = () => {
   const ym = S.mes, n = ultimoDia(ym), ini = new Date(`${ym}-01T12:00`).getDay(), cel = [], ev = eventosMes(ym);
   for (let i = 0; i < ini; i++) cel.push('<div class="cd vz"></div>');
@@ -1059,8 +1069,8 @@ V.calendario = () => {
     cel.push(`<button class="cd ${d === hoje() ? "hj" : ""}${es.some(e => e.t === "venc" && !e.ok) ? " cv" : ""}" data-act="dia" data-d="${d}"><b>${dia}</b>${pills}${rec ? `<span class="pos">+${S.priv ? "••" : rec.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}${des ? `<span class="neg">-${S.priv ? "••" : des.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}</button>`); }
   return `<h2 style="margin-bottom:12px">Calendário</h2><div class="card"><div class="cal">${["dom", "seg", "ter", "qua", "qui", "sex", "sáb"].map(x => `<div class="cdh">${x}</div>`).join("")}${cel.join("")}</div>
   <div class="sum calleg"><span><i class="evd" style="background:#d9483b"></i>💳 vence fatura</span><span><i class="evd" style="background:#3b7ddd"></i>✂️ fecha fatura</span><span><i class="evd" style="background:#f29a38"></i>🔔 conta a pagar</span><span><i class="evd" style="background:#2e9e5b"></i>✓ já pago</span><span class="pos">+ entradas</span><span class="neg">− despesas</span></div></div>
-  <div class="card" style="margin-top:14px"><h3>Datas importantes de ${NOME_MES(ym)}</h3>${ev.length ? [...new Set(ev.map(e => e.d))].map(d => `<div class="evday ${d === hoje() ? "hj" : ""}"><div class="evn"><b>${Number(d.slice(8))}</b><small>${DIAS[new Date(d + "T12:00").getDay()]}</small></div><div class="evl">${ev.filter(e => e.d === d).map(evHtml).join("")}</div></div>`).join(""): '<div class="empty">Cadastre cartões e contas mensais para ver as datas aqui.</div>'}</div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(290px,1fr));align-items:start;margin-top:14px">
+    <div class="card"><h3>Datas importantes do mês</h3>${datasGrupoHtml(ev)}</div>
     <div class="card"><h3>Entradas do mês por grupo</h3>${porGrupoHtml("Total de entradas", doMes("receita", ym), "pos", false) || '<div class="empty">Nenhuma entrada neste mês.</div>'}</div>
     <div class="card"><h3>Despesas do mês por grupo</h3>${porGrupoHtml("Total de despesas", doMes("despesa", ym), "neg", false) || '<div class="empty">Nenhuma despesa neste mês.</div>'}</div>
   </div>`;

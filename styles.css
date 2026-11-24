@@ -336,3 +336,6 @@ td.lkc{cursor:pointer}td.lkc:hover{background:var(--soft)}
 .evl{flex:1;min-width:0}
 .evr{display:flex;align-items:center;gap:8px;padding:5px 0}.evr .tx{flex:1;min-width:0}.evr .tx small{display:block;color:var(--mut);font-size:12px}
 @media(max-width:600px){.cd{min-height:78px;padding:4px 2px}.evp{font-size:8px;padding:1px 2px}}
+
+.evl2{padding:6px 4px 6px 14px;gap:10px}.evl2 .tx small{display:block;color:var(--mut);font-size:12px}
+.evdn{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;color:#fff;font-size:13px;flex:none}
