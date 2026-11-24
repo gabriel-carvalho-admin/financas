@@ -1172,6 +1172,7 @@ V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" s
   ${fechamentos().map(f => `<div class="row" data-act="verFech" data-ym="${f.mes}"><div class="tx"><div>${NOME_MES(f.mes)}</div><small>Total informado ${brl(f.total)} · ${Object.keys(f.contas).length} ${Object.keys(f.contas).length === 1 ? "conta" : "contas"}</small></div><span class="mut">ver ›</span></div>`).join("")}</div>
 <div class="card" style="max-width:520px">
   <div class="row" data-act="dark"><div class="tx">Tema escuro</div><span class="ck ${document.documentElement.classList.contains("dark") ? "on" : ""}">✓</span></div>
+  <div class="row" data-act="backup"><div class="tx"><div>Backup completo dos dados (JSON)</div><small>Baixa tudo: contas, cartões, lançamentos, configurações…</small></div></div>
   <div class="row" data-act="csv"><div class="tx"><div>Exportar lançamentos (CSV)</div><small>Abre no Excel ou Google Planilhas</small></div></div>
   <div class="row" data-act="sair"><div class="tx"><div class="neg">Sair</div><small>${esc(S.demo ? "Modo demonstração — nada é salvo" : S.user?.email || "")}</small></div></div></div>`;
 
@@ -1487,6 +1488,13 @@ function exportarCSV() {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + linhas.join("\n")], { type: "text/csv" })); a.download = "lancamentos.csv"; a.click();
 }
 
+function exportarBackup() {
+  const dados = {}; COLS.forEach(c => { dados[c] = JSON.parse(JSON.stringify(S.data[c] || [])); });
+  const total = COLS.reduce((n, c) => n + dados[c].length, 0), d = hoje();
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ app: "meu-financeiro", gerado: new Date().toISOString(), dados }, null, 1)], { type: "application/json" }));
+  a.download = `backup-meu-financeiro-${d}.json`; a.click(); toast(`Backup salvo: ${total} registros.`);
+}
+
 /* ---------- ações ---------- */
 const A = {
   ...PJ,
@@ -1628,7 +1636,7 @@ const A = {
   fechar2: (d, e) => { if (d.force || e.target.classList.contains("ov")) $("#modal2").innerHTML = ""; }, verNota: d => { const l = by("lancamentos", d.id); if (l?.nota) verNotaImg(l.nota, l.descricao); },
   fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) { $("#modal").innerHTML = ""; IMP = null; } },
   dark: () => { const on = document.documentElement.classList.toggle("dark"); try { localStorage.setItem("mf-dark", on ? "1" : "0"); } catch (e) {} render(); },
-  csv: exportarCSV,
+  csv: exportarCSV, backup: exportarBackup,
   sair: () => S.demo ? location.reload() : sairLimpando(fb)
 };
 document.addEventListener("click", e => { const t = e.target.closest("[data-act]"); if (!t || t.closest("form.modal")) return; e.stopPropagation(); A[t.dataset.act]?.(t.dataset, e); });
