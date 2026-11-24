@@ -165,7 +165,9 @@ const fechData = (c, ym) => dataNoMes(fechaAntes(c) ? addMes(ym, -1) : ym, c.fec
 const fatMes = l => { if (l.faturaRef) return l.faturaRef; const c = by("cartoes", l.cartaoId), base = Number(l.data.slice(8)) > (c?.fechamento || 31) ? addMes(ymOf(l.data), 1) : ymOf(l.data); return fechaAntes(c) ? addMes(base, 1) : base; };
 const fatItens = (cid, ym) => S.data.lancamentos.filter(l => l.cartaoId === cid && fatMes(l) === ym);
 const fatTotal = (cid, ym) => r2(fatItens(cid, ym).reduce((s, l) => s + l.valor, 0));
-const emAberto = c => r2(S.data.lancamentos.filter(l => l.cartaoId === c.id && !c.pagas?.[fatMes(l)]).reduce((s, l) => s + l.valor, 0));
+// quanto ainda falta pagar da fatura: compras que entraram depois do pagamento continuam devidas
+const faltaPagar = (c, ym) => r2(fatTotal(c.id, ym) - (c.pagas?.[ym]?.valor || 0));
+const emAberto = c => r2([...new Set(S.data.lancamentos.filter(l => l.cartaoId === c.id).map(fatMes))].reduce((s, ym) => s + Math.max(0, faltaPagar(c, ym)), 0));
 function movimentos(contaId) {
   const out = [];
   for (const l of S.data.lancamentos) {
@@ -181,7 +183,7 @@ function movimentos(contaId) {
     for (const [ym, p] of Object.entries(c.pagas || {})) if (p.contaId === contaId) out.push({ d: p.data, v: -p.valor, ok: true, t: "d", f: 1 });
     if (c.contaId === contaId) {
       const meses = new Set(S.data.lancamentos.filter(l => l.cartaoId === c.id).map(fatMes));
-      for (const ym of meses) if (!c.pagas?.[ym]) out.push({ d: dataNoMes(ym, c.vencimento || 10), v: -fatTotal(c.id, ym), ok: false, t: "d", f: 1 });
+      for (const ym of meses) { const f = faltaPagar(c, ym); if (f > 0.005) out.push({ d: dataNoMes(ym, c.vencimento || 10), v: -f, ok: false, t: "d", f: 1 }); }
     }
   }
   return out;
@@ -430,7 +432,7 @@ V.lancamentos = () => `<div class="tools">${[["todos", "Todos"], ["despesa", "De
 function stFatura(c, m = S.mes) {
   const paga = c.pagas?.[m], ft = fatTotal(c.id, m), fech = fechData(c, m), venc = dataNoMes(m, c.vencimento || 10), fechada = hoje() > fech;
   const tags = `<span class="tag" style="background:${fechada ? "#5b6ee0" : "#3b7ddd"}">${fechada ? "🔒 Fechada" : "Aberta"}</span> ` +
-    (paga ? '<span class="tag" style="background:#2e9e5b">✓ Paga</span>' : ft > 0 ? `<span class="tag" style="background:${hoje() > venc ? "#d9483b" : "#f29a38"}">${hoje() > venc ? "Não paga · vencida" : "Não paga"}</span>` : '<span class="tag" style="background:#90a4ae">Sem gastos</span>');
+    (paga && ft - paga.valor > 0.005 ? `<span class="tag" style="background:#f29a38" title="Entraram compras depois do pagamento">✓ Paga · falta ${brl(r2(ft - paga.valor))}</span>` : paga ? '<span class="tag" style="background:#2e9e5b">✓ Paga</span>' : ft > 0 ? `<span class="tag" style="background:${hoje() > venc ? "#d9483b" : "#f29a38"}">${hoje() > venc ? "Não paga · vencida" : "Não paga"}</span>` : '<span class="tag" style="background:#90a4ae">Sem gastos</span>');
   return { paga, ft, fech, venc, fechada, tags };
 }
 function paginaCartao(c) {
@@ -1261,7 +1263,7 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
     const dl = f.list ? opts({ options: f.list }) : null;
     return `<div class="f"><label for="f-${f.k}">${f.label}</label><input id="f-${f.k}" data-k="${f.k}" ${t} value="${esc(val)}" autocomplete="off" ${dl ? `list="dl-${f.k}"` : ""}>${dl ? `<datalist id="dl-${f.k}">${dl.map(x => `<option value="${esc(x)}">`).join("")}</datalist>` : ""}</div>`;
   }).join("");
-  let conf = false;
+  let conf = false, salvando = false;
   const paint = () => {
     box.innerHTML = `<div class="ov"><form class="modal"><h2>${title}</h2><div id="fb">${body()}</div><div class="acts">
       ${onDelete ? `<button type="button" class="btn danger" data-x="del">${delLabel}</button>` : ""}${extra ? `<button type="button" class="btn danger" data-x="extra">${extra.label}</button>` : ""}
@@ -1278,7 +1280,9 @@ function openForm({ title, fields, values = {}, onSave, onDelete, delLabel = "Ex
       await (t.dataset.x === "del" ? onDelete() : extra.fn()); close();
     };
     form.onchange = async e => { if (!e.target.matches("[data-foto-in]") || !e.target.files[0]) return; try { toast("Processando a foto…"); v.nota = await fotoNota(e.target.files[0]); $("#fb", box).innerHTML = body(); toast("Nota anexada. Toque em Salvar."); } catch (er) { toast(er.message); } };
-    form.onsubmit = async e => { e.preventDefault(); try { if (await onSave(v) !== false) close(); } catch (err) { toast("Não foi possível salvar: " + (err.code || err.message)); } };
+    // trava contra toque duplo: sem internet a gravação só confirma depois, e um segundo toque duplicaria o lançamento
+    form.onsubmit = async e => { e.preventDefault(); if (salvando) return; salvando = true; const bt = $("button:not([type])", form); bt.disabled = true;
+      try { if (await onSave(v) !== false) close(); } catch (err) { toast("Não foi possível salvar: " + (err.code || err.message)); } finally { salvando = false; if (bt.isConnected) bt.disabled = false; } };
     $(".ov", box).onclick = e => { if (e.target.classList.contains("ov")) close(); };
   };
   const close = () => { box.innerHTML = ""; };
@@ -1539,7 +1543,7 @@ const A = {
   impTodas: () => { const algum = IMP.itens.some(x => x.on); IMP.itens.forEach(x => x.on = !algum && !x.credito); telaImportar(); },
   impAplicar: () => { const cId = $("#impcat").value, sg = $("#impsub").value.trim(); const vId = $("#impvei")?.value || ""; if (!cId && !sg && !vId) return toast("Escolha uma categoria, um subgrupo ou um veículo.");
     IMP.itens.filter(x => x.on).forEach(x => { if (cId) x.categoriaId = cId; if (sg) x.subgrupo = sg; if (vId) x.veiculoId = vId; }); telaImportar(); },
-  impSalvar: async () => { const sel = IMP.itens.filter(x => x.on); if (!sel.length) return toast("Marque pelo menos uma compra.");
+  impSalvar: async () => { if (IMP.salvando) return; const sel = IMP.itens.filter(x => x.on); if (!sel.length) return toast("Marque pelo menos uma compra.");
     const ruim = sel.find(x => { const a = String(x.pA ?? "").trim(), t = String(x.pT ?? "").trim(); return (a || t) && !(Number(t) > 1 && Number(a) >= 1 && Number(a) <= Number(t)); });
     if (ruim) return toast(`Confira a parcela de "${ruim.nome}": informe o número e o total (ex.: 3 de 10).`);
     const novos = sel.map(x => { const p = Number(x.pT) > 1 ? [0, Math.floor(Number(x.pA)), Math.floor(Number(x.pT))] : null, parc = !!p, naFatura = IMP.modo === "fatura";
@@ -1548,6 +1552,7 @@ const A = {
       if (naFatura && data > `${S.mes}-31`) data = x.data;
       return { tipo: "despesa", descricao: x.nome.trim() || x.descOrig || "Compra no cartão", valor: x.valor, data, ...(data !== x.data ? { dataCompra: x.data } : {}), categoriaId: x.categoriaId || "", subgrupo: (x.subgrupo || "").trim(), contaId: "", cartaoId: IMP.cartaoId, contaDestinoId: "", pessoaId: x.pessoaId || "", ...(x.veiculoId ? { veiculoId: x.veiculoId } : {}), efetivada: true,
         recorrencia: parc ? "parcelada" : "variavel", ...(parc ? { parcela: Number(p[1]), parcelas: Number(p[2]) } : {}), importId: x.importId, descOrig: x.descOrig, ...(naFatura ? { faturaRef: S.mes } : {}) }; });
+    const imp = IMP; imp.salvando = true;
     try {
       const prevIds = new Map(sel.filter(x => x.prev).map(x => [x.importId, x.prev])), conf = [], add = [];
       novos.forEach(n => { const pid = prevIds.get(n.importId), orig = pid && by("lancamentos", pid); if (orig) conf.push({ ...orig, valor: n.valor, importId: n.importId, descOrig: n.descOrig, projetada: false, ...(n.faturaRef ? { faturaRef: n.faturaRef } : {}) }); else add.push(n); });
@@ -1555,7 +1560,7 @@ const A = {
       await emLotes(conf, c => store.set("lancamentos", c.id, c));
       await store.addMany("lancamentos", [...add, ...extras]);
       toast(`${novos.length} compras importadas (${brl(total(novos))})${extras.length ? ` e ${extras.length} parcelas futuras lançadas` : ""}.`); IMP = null; $("#modal").innerHTML = ""; }
-    catch (err) { toast("Não foi possível importar: " + (err.code || err.message)); } },
+    catch (err) { imp.salvando = false; toast("Não foi possível importar: " + (err.code || err.message)); } },
   selTog: d => { const q = selAn(), g = d.g; q[g].has(d.id) ? q[g].delete(d.id) : q[g].add(d.id); store.set("config", "analise", { p: [...q.p], v: [...q.v], f: [...q.f] }); },
   selLimpar: () => store.set("config", "analise", { p: [], v: [], f: [] }),
   selSub: d => { const P = periodo(), it = itensAn(P).filter(l => (l.categoriaId || "") === d.id), c = cat(d.id), mp = new Map(), cores = ["#4a9be0", "#f29a38", "#2e9e5b", "#9c6ade", "#e0564a", "#26a69a", "#ec6fa0", "#8d6e63", "#607d8b", "#fbc02d"];
@@ -1580,8 +1585,9 @@ const A = {
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   "fechar-mes": d => formFechamento(d.ym), verFech: d => verFechamento(d.ym),
   prefs: () => formPrefs(), diagnostico: () => abrirDiagnostico(), parcelas: () => abrirParcelas(),
-  parGerar: async () => { const novos = (PAR || []).filter(x => x.on).flatMap(x => x.novos); if (!novos.length) return toast("Marque pelo menos uma compra.");
-    try { await store.addMany("lancamentos", novos); PAR = null; $("#modal").innerHTML = ""; toast(`${novos.length} parcelas criadas.`); } catch (err) { toast("Não foi possível criar: " + (err.code || err.message)); } },
+  parGerar: async () => { if (!PAR || PAR.salvando) return; const novos = PAR.filter(x => x.on).flatMap(x => x.novos); if (!novos.length) return toast("Marque pelo menos uma compra.");
+    const par = PAR; par.salvando = true;
+    try { await store.addMany("lancamentos", novos); PAR = null; $("#modal").innerHTML = ""; toast(`${novos.length} parcelas criadas.`); } catch (err) { par.salvando = false; toast("Não foi possível criar: " + (err.code || err.message)); } },
   edPainel: () => { S.edPainel = !S.edPainel; render(); },
   wHide: d => salvarPainel({ oculto: [...new Set([...(layoutP().oculto || []), d.id])] }), wShow: d => salvarPainel({ oculto: (layoutP().oculto || []).filter(x => x !== d.id) }),
   wReset: () => store.set("config", "painel", { ordem: [], w: {}, h: {}, oculto: [] }),
@@ -1590,7 +1596,7 @@ const A = {
   fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) { $("#modal").innerHTML = ""; IMP = null; } },
   dark: () => { const on = document.documentElement.classList.toggle("dark"); try { localStorage.setItem("mf-dark", on ? "1" : "0"); } catch (e) {} render(); },
   csv: exportarCSV,
-  sair: () => { if (S.demo) location.reload(); else fb.A.signOut(fb.auth); }
+  sair: () => S.demo ? location.reload() : sairLimpando(fb)
 };
 document.addEventListener("click", e => { const t = e.target.closest("[data-act]"); if (!t || t.closest("form.modal")) return; e.stopPropagation(); A[t.dataset.act]?.(t.dataset, e); });
 document.addEventListener("input", e => { if (e.target.id === "busca") { S.busca = e.target.value; $("#lista").innerHTML = listaLanc(); } });
@@ -1787,6 +1793,11 @@ function telaLogin(msg = "") {
   $("form").onsubmit = e => { e.preventDefault(); if (!fb) return err({ code: "auth/network-request-failed" }); fb.A.signInWithEmailAndPassword(fb.auth, ...cred()).catch(err); };
   $("#reset").onclick = () => fb && fb.A.sendPasswordResetEmail(fb.auth, cred()[0]).then(() => { $("#err").textContent = "Enviamos um e-mail para redefinir a senha."; }).catch(err);
   $("#demo").onclick = entrarDemo;
+}
+// Sair de verdade: desconecta, apaga a cópia local dos dados (IndexedDB) e recarrega para fechar as escutas do banco
+async function sairLimpando(fb) {
+  try { await fb.A.signOut(fb.auth); await fb.F.terminate(fb.db); await fb.F.clearIndexedDbPersistence(fb.db); } catch (e) {}
+  location.reload();
 }
 function entrarDemo() { S.demo = true; store = demoStore(); semearDemo(); $("#root").innerHTML = ""; draw(); }
 
