@@ -168,6 +168,14 @@ const fatTotal = (cid, ym) => r2(fatItens(cid, ym).reduce((s, l) => s + l.valor,
 // quanto ainda falta pagar da fatura: compras que entraram depois do pagamento continuam devidas
 const faltaPagar = (c, ym) => r2(fatTotal(c.id, ym) - (c.pagas?.[ym]?.valor || 0));
 const emAberto = c => r2([...new Set(S.data.lancamentos.filter(l => l.cartaoId === c.id).map(fatMes))].reduce((s, ym) => s + Math.max(0, faltaPagar(c, ym)), 0));
+// em aberto dividido: fatura do mês em tela, faturas anteriores ainda devidas e próximas (parcelas futuras)
+function abertoPartes(c, ym = S.mes) {
+  const mes = [...new Set(S.data.lancamentos.filter(l => l.cartaoId === c.id).map(fatMes))], f = m => Math.max(0, faltaPagar(c, m));
+  const atual = r2(f(ym)), antes = r2(mes.filter(m => m < ym).reduce((t, m) => t + f(m), 0)), depois = r2(mes.filter(m => m > ym).reduce((t, m) => t + f(m), 0));
+  return { atual, antes, depois };
+}
+const abertoTxt = (c, ym = S.mes) => { const p = abertoPartes(c, ym), n = MESES[Number(ym.slice(5)) - 1].toLowerCase();
+  return `Fatura de ${n} ${brl(p.atual)}${p.antes > 0.005 ? ` · anteriores ${brl(p.antes)}` : ""} · próximas faturas ${brl(p.depois)}`; };
 function movimentos(contaId) {
   const out = [];
   for (const l of S.data.lancamentos) {
@@ -441,7 +449,8 @@ function paginaCartao(c) {
   const maiores = [...it].sort((a, b) => b.valor - a.valor).slice(0, 8).map(l => ({ c: { nome: l.descricao, cor: cat(l.categoriaId).cor }, v: l.valor, p: l.valor / (st.ft || 1) * 100 }));
   return `<div class="tools"><button class="pill" data-act="voltarCartao">‹ Cartões</button><h2 style="flex:1;min-width:140px">${esc(c.nome)}</h2>
     <button class="btn" data-act="novo" data-cartao="${c.id}">+ Despesa</button><button class="btn ghost" data-act="importar" data-id="${c.id}">⬆ Importar</button><button class="btn ghost" data-act="editCartao" data-id="${c.id}">Editar</button></div>
-  <div class="stats" style="margin-bottom:14px">${statBox("#5b6ee0", "💳", c.limite || 0, "Limite")}${statBox("#f29a38", "⏳", ab, "Em aberto (todas as faturas)")}${statBox("#2e9e5b", "✓", disp, "Limite disponível", disp < 0 ? "neg" : "")}${statBox("#d9483b", "－", st.paga ? st.paga.valor : st.ft, `Fatura de ${mesNome}`, st.paga ? "" : "neg")}</div>
+  <div class="stats" style="margin-bottom:14px">${statBox("#5b6ee0", "💳", c.limite || 0, "Limite")}${statBox("#f29a38", "⏳", ab, "Em aberto (total)")}${statBox("#2e9e5b", "✓", disp, "Limite disponível", disp < 0 ? "neg" : "")}${statBox("#d9483b", "－", st.paga ? st.paga.valor : st.ft, `Fatura de ${mesNome}`, st.paga ? "" : "neg")}</div>
+  <div class="mut" style="margin:-6px 0 14px;font-size:13px">Em aberto: ${abertoTxt(c)}</div>
   <div class="card" style="margin-bottom:14px"><h3>Fatura de ${mesNome} <span>${st.tags}</span></h3>
     <div class="tri"><div><small>Fechamento</small>${dataBR(st.fech)}</div><div><small>Vencimento</small>${dataBR(st.venc)}</div><div><small>Valor</small><b>${brl(st.paga ? st.paga.valor : st.ft)}</b></div></div>
     <div class="dash-l" style="border-top:1px dashed var(--line);margin:10px 0"></div>
@@ -468,8 +477,8 @@ V.cartoes = () => {
     const ab = emAberto(c), disp = r2((c.limite || 0) - ab), st = stFatura(c);
     return `<div class="card pcard" data-act="abrirCartao" data-id="${c.id}"><div class="hd">${av(ini(c.nome), c.cor)}<div class="tx"><b>${esc(c.nome)}</b><small>${esc(c.bandeira || "Cartão de crédito")}</small></div>
       <button class="link mais" data-act="novo" data-cartao="${c.id}" title="Nova despesa">+</button><button data-act="editCartao" data-id="${c.id}" title="Editar">${ico("mais")}</button></div>
-      <div class="tri"><div><small>Limite</small>${brl(c.limite || 0)}</div><div><small>Em aberto</small>${brl(ab)}</div><div><small>Limite disp.</small><span class="${disp < 0 ? "neg" : ""}">${brl(disp)}</span></div></div>
-      <div class="prog"><i style="width:${Math.min(100, c.limite ? ab / c.limite * 100 : 0)}%;background:${esc(c.cor)}"></i></div>
+      <div class="tri"><div><small>Limite</small>${brl(c.limite || 0)}</div><div><small>Em aberto (total)</small>${brl(ab)}</div><div><small>Limite disp.</small><span class="${disp < 0 ? "neg" : ""}">${brl(disp)}</span></div></div>
+      <div class="prog"><i style="width:${Math.min(100, c.limite ? ab / c.limite * 100 : 0)}%;background:${esc(c.cor)}"></i></div><small class="mut" style="display:block;margin-top:6px">${abertoTxt(c)}</small>
       <div class="tri" style="margin-top:12px"><div><small>Conta</small>${esc(by("contas", c.contaId)?.nome || "-")}</div><div><small>Fechamento</small>${dataBR(st.fech).slice(0, 5)}</div><div><small>Vencimento</small>${dataBR(st.venc).slice(0, 5)}</div></div>
       <div class="dash-l"></div><div class="fat"><span>Fatura de ${MESES[Number(m.slice(5)) - 1].toLowerCase()}</span><b class="${st.paga ? "" : st.ft > 0 ? "neg" : ""}">${brl(st.paga ? st.paga.valor : st.ft)}</b></div>
       <div class="ft" style="flex-wrap:wrap"><span>${st.tags}</span></div>
