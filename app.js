@@ -1170,6 +1170,7 @@ V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" s
   <div class="mut" style="font-size:13px;margin:0 0 8px">Todo último dia do mês, anote quanto sobrou em cada conta (carteira, contas correntes…) e compare com o que o app calculou. O valor informado vira o saldo inicial do mês seguinte. O app avisa no Início no último dia do mês.</div>
   <div class="row" data-act="fechar-mes" data-ym="${S.mes}"><div class="tx"><div>Fazer o fechamento de ${NOME_MES(S.mes)}</div><small>${fechDe(S.mes) ? "Já feito — toque para editar" : "Ainda não feito"}</small></div><span class="mut">›</span></div>
   ${fechamentos().map(f => `<div class="row" data-act="verFech" data-ym="${f.mes}"><div class="tx"><div>${NOME_MES(f.mes)}</div><small>Total informado ${brl(f.total)} · ${Object.keys(f.contas).length} ${Object.keys(f.contas).length === 1 ? "conta" : "contas"}</small></div><span class="mut">ver ›</span></div>`).join("")}</div>
+${cardTemas()}
 <div class="card" style="max-width:520px">
   <div class="row" data-act="dark"><div class="tx">Tema escuro</div><span class="ck ${document.documentElement.classList.contains("dark") ? "on" : ""}">✓</span></div>
   <div class="row" data-act="backup"><div class="tx"><div>Backup completo dos dados (JSON)</div><small>Baixa tudo: contas, cartões, lançamentos, configurações…</small></div></div>
@@ -1180,6 +1181,7 @@ V.config = () => `<h2 style="margin-bottom:12px">Ajustes</h2><div class="card" s
 function draw() {
   const root = $("#root");
   if (S.carregado || S.demo) sincronizarNotas(by("config", "notas"), true);
+  sincronizarTema();
   if (!S.user && !S.demo) return;
   if (!$("#app")) {
     root.innerHTML = `<div id="app"><header class="top"><button class="hb" data-act="menu" aria-label="Abrir menu">${ico("menu")}</button><div class="logo">${LOGO}<span>meu<b>financeiro</b></span></div><span class="sp"></span>
@@ -1495,6 +1497,44 @@ function exportarBackup() {
   a.download = `backup-meu-financeiro-${d}.json`; a.click(); toast(`Backup salvo: ${total} registros.`);
 }
 
+
+/* ---------- temas (aparência e animações) ---------- */
+const TEMAS_PRONTOS = [{ id: "suave", nome: "Suave (exemplo)",
+  claro: { "--bg": "#f3f7f5", "--card": "#ffffff", "--ink": "#17332a", "--mut": "#6a7f77", "--line": "#e2ebe6", "--soft": "#ecf3ef", "--pri": "#1f8a63", "--ok": "#1f8a63", "--shadow": "0 1px 2px rgba(20,60,45,.05),0 10px 28px rgba(20,60,45,.08)" },
+  escuro: { "--bg": "#0f1714", "--card": "#17211d", "--ink": "#e6f0ec", "--mut": "#8fa69d", "--line": "#243630", "--soft": "#1d2b26", "--pri": "#37b886", "--shadow": "0 1px 3px rgba(0,0,0,.4)" },
+  css: ".card{border-radius:18px;border-color:transparent;transition:transform .2s ease,box-shadow .2s ease}.card:hover{transform:translateY(-2px)}.btn,.fab{transition:transform .15s ease,filter .15s ease}.btn:active,.fab:active{transform:scale(.95)}.fab:hover{transform:scale(1.08)}.row{transition:background .15s ease}.modal{animation:mfPop .25s ease}@keyframes mfPop{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}" }];
+const TEMA_MODELO = { nome: "Nome do tema", claro: { "--bg": "#f2f5fb", "--card": "#fff", "--ink": "#1f2937", "--mut": "#6b7280", "--line": "#e6eaf2", "--soft": "#eef2f9", "--pri": "#3b7ddd", "--ok": "#2e9e5b", "--bad": "#d9483b", "--warn": "#f29a38", "--shadow": "0 1px 3px rgba(30,50,90,.08)" }, escuro: { "--bg": "#12151c", "--card": "#1b2029", "--ink": "#e8ecf3", "--mut": "#9aa4b5", "--line": "#2a313d", "--soft": "#232a36", "--pri": "#5b97ee" }, css: "/* CSS extra: bordas, sombras, fontes e animações (@keyframes). Classes: .card .btn .fab .row .modal .side .top */" };
+const temasSalvos = () => by("config", "temas") || {};
+const temasTodos = () => [...TEMAS_PRONTOS, ...(temasSalvos().lista || [])];
+const temaAtivo = () => temasTodos().find(t => t.id === temasSalvos().ativo) || null;
+function cssTema(t) {
+  const bloco = (sel, o) => o ? `${sel}{${Object.entries(o).filter(([k, v]) => /^--[\w-]+$/.test(k) && !/[{};<]/.test(String(v))).map(([k, v]) => `${k}:${v}`).join(";")}}` : "";
+  const extra = String(t.css || "").replace(/@import[^;]*;?/gi, "").replace(/url\s*\(\s*['"]?\s*(https?:)?\/\//gi, "none(").replace(/<\/?style/gi, "");
+  return bloco(":root", t.claro) + bloco("html.dark", t.escuro) + extra;
+}
+let TEMA_APLICADO = null;
+function aplicarTema(t) {
+  const chave = t ? JSON.stringify(t) : ""; if (chave === TEMA_APLICADO) return; TEMA_APLICADO = chave;
+  let el = document.getElementById("tema-css"); if (!el) { el = document.createElement("style"); el.id = "tema-css"; document.head.appendChild(el); }
+  el.textContent = t ? cssTema(t) : "";
+  try { t ? localStorage.setItem("mf-tema", chave) : localStorage.removeItem("mf-tema"); } catch (e) {}
+}
+function temaInicial() {
+  try {
+    if (/[?&]tema=padrao/.test(location.search)) { localStorage.removeItem("mf-tema"); return; }
+    const c = localStorage.getItem("mf-tema"); if (c) aplicarTema(JSON.parse(c));
+  } catch (e) {}
+}
+temaInicial();
+const sincronizarTema = () => { if (S.carregado || S.demo) aplicarTema(temaAtivo()); };
+async function salvarTemas(o) { await store.set("config", "temas", { lista: temasSalvos().lista || [], ativo: temasSalvos().ativo || "", ...o }); }
+const cardTemas = () => { const at = temasSalvos().ativo || "", linha = (id, nome, sub, del) => `<div class="row" data-act="tema" data-id="${esc(id)}"><div class="tx"><div>${esc(nome)}</div><small>${esc(sub)}</small></div>${del ? `<button class="btn danger" data-act="temaDel" data-id="${esc(id)}">Excluir</button>` : ""}<span class="ck ${at === id || (!at && id === "padrao") ? "on" : ""}">✓</span></div>`;
+  return `<div class="card" style="max-width:520px;margin-bottom:14px"><h3>Aparência e animações</h3>
+  <div class="mut" style="font-size:13px;margin:0 0 8px">O <b>Padrão</b> é o visual original e nunca muda. Peça um tema novo ao Claude e cole aqui. Se algo ficar estranho, toque em Padrão (ou abra o app com <b>?tema=padrao</b> no endereço).</div>
+  ${linha("padrao", "Padrão", "Visual original do app", false)}${TEMAS_PRONTOS.map(t => linha(t.id, t.nome, "Tema pronto", false)).join("")}${(temasSalvos().lista || []).map(t => linha(t.id, t.nome, "Criado por você", true)).join("")}
+  <div class="row" data-act="temaImp"><div class="tx"><div>Importar tema novo (colar código)</div><small>Cole o código que o Claude gerou</small></div><span class="mut">›</span></div>
+  <div class="row" data-act="temaModelo"><div class="tx"><div>Copiar o formato do tema</div><small>Cole no Claude para ele saber como gerar</small></div></div></div>`; };
+
 /* ---------- ações ---------- */
 const A = {
   ...PJ,
@@ -1636,6 +1676,14 @@ const A = {
   fechar2: (d, e) => { if (d.force || e.target.classList.contains("ov")) $("#modal2").innerHTML = ""; }, verNota: d => { const l = by("lancamentos", d.id); if (l?.nota) verNotaImg(l.nota, l.descricao); },
   fechar: (d, e) => { if (d.force || e.target.classList.contains("ov")) { $("#modal").innerHTML = ""; IMP = null; } },
   dark: () => { const on = document.documentElement.classList.toggle("dark"); try { localStorage.setItem("mf-dark", on ? "1" : "0"); } catch (e) {} render(); },
+  tema: async d => { if (d.id === "padrao" || temasTodos().some(t => t.id === d.id)) { await salvarTemas({ ativo: d.id === "padrao" ? "" : d.id }); aplicarTema(temaAtivo()); render(); } },
+  temaDel: async (d, e) => { e.stopPropagation(); await salvarTemas({ lista: (temasSalvos().lista || []).filter(t => t.id !== d.id), ativo: temasSalvos().ativo === d.id ? "" : temasSalvos().ativo }); aplicarTema(temaAtivo()); render(); toast("Tema excluído."); },
+  temaModelo: async () => { const txt = JSON.stringify(TEMA_MODELO, null, 1); try { await navigator.clipboard.writeText(txt); toast("Formato copiado. Cole no Claude."); } catch (e) { $("#modal2").innerHTML = `<div class="ov" data-act="fechar2"><div class="modal"><h2>Formato do tema</h2><textarea style="width:100%;height:220px;font:12px monospace">${esc(txt)}</textarea><div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar2" data-force="1">Fechar</button></div></div></div>`; } },
+  temaImp: () => { $("#modal2").innerHTML = `<div class="ov" data-act="fechar2"><div class="modal"><h2>Importar tema</h2><div class="mut" style="font-size:13px;margin-bottom:8px">Cole aqui o código do tema gerado pelo Claude.</div><textarea id="tema-txt" style="width:100%;height:220px;font:12px monospace" placeholder='{ "nome": "...", "claro": {...}, "escuro": {...}, "css": "..." }'></textarea><div class="acts"><button class="btn ghost" data-act="fechar2" data-force="1">Cancelar</button><span class="sp"></span><button class="btn" data-act="temaSalvarImp">Salvar e aplicar</button></div></div></div>`; },
+  temaSalvarImp: async () => { let t; try { t = JSON.parse($("#tema-txt").value); } catch (e) { return toast("Código inválido. Cole o JSON completo."); }
+    if (!t || typeof t !== "object" || !t.nome) return toast("O tema precisa ter um nome.");
+    const novo = { id: "t" + Date.now().toString(36), nome: String(t.nome).slice(0, 40), claro: t.claro || {}, escuro: t.escuro || {}, css: String(t.css || "").slice(0, 20000) };
+    await salvarTemas({ lista: [...(temasSalvos().lista || []), novo], ativo: novo.id }); aplicarTema(temaAtivo()); $("#modal2").innerHTML = ""; render(); toast("Tema aplicado."); },
   csv: exportarCSV, backup: exportarBackup,
   sair: () => S.demo ? location.reload() : sairLimpando(fb)
 };
