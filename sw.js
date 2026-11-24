@@ -1,5 +1,5 @@
 // Cache simples: tenta a rede primeiro e usa o cache quando estiver sem internet
-const C = "mf-v89", ARQ = ["./", "index.html", "styles.css", "app.js", "emojis.js", "flutuante.js", "dilcar.html", "dilcar.js", "manifest.webmanifest", "icon-192.png"];
+const C = "mf-v90", ARQ = ["./", "index.html", "styles.css", "app.js", "emojis.js", "flutuante.js", "dilcar.html", "dilcar.js", "manifest.webmanifest", "icon-192.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(C).then(c => Promise.all(ARQ.map(a => fetch(a, { cache: "reload" }).then(r => c.put(a, r))))).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
