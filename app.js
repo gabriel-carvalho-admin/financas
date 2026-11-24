@@ -266,12 +266,26 @@ function donut(segs, centro) {
 document.addEventListener("mouseover", e => { const el = e.target.closest?.("[data-sl]"), box = (el || e.target).closest?.(".card,.modal"); const ct = box?.querySelector(".ct"); if (!ct) return;
   box.querySelectorAll(".sl").forEach(c => c.classList.toggle("dim", !!el && c.dataset.sl !== el.dataset.sl));
   if (el) { const [n, v, p] = el.dataset.sl.split("|"); ct.setAttribute("font-size", "2.4"); ct.innerHTML = `<tspan x="21" dy="-1.2">${n.length > 16 ? n.slice(0, 15) + "…" : n}</tspan><tspan x="21" dy="3.4" font-size="3">${v}</tspan><tspan x="21" dy="3" font-size="2.2">${p}</tspan>`; } else { ct.setAttribute("font-size", "3.4"); ct.textContent = ct.dataset.c; } });
+const suave = () => document.body.classList.contains("mf-curvas");
+let GID = 0;
+function linhaArea(p, xa, xb, base, cor, op, sw) {
+  const f = v => v.toFixed(1);
+  if (!suave()) { const pts = p.map(q => f(q[0]) + "," + f(q[1])).join(" "); return `<polygon points="${xa},${base} ${pts} ${xb},${base}" fill="${cor}" opacity="${op}"/><polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="${sw}"/>`; }
+  const d = p.map((q, i) => { if (!i) return `M${f(q[0])},${f(q[1])}`; const a = p[i - 1], k = (q[0] - a[0]) * .42; return `C${f(a[0] + k)},${f(a[1])} ${f(q[0] - k)},${f(q[1])} ${f(q[0])},${f(q[1])}`; }).join(""), id = "gl" + (++GID);
+  return `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${cor}" stop-opacity=".34"/><stop offset="1" stop-color="${cor}" stop-opacity="0"/></linearGradient></defs><path class="ar" d="${d}L${f(p[p.length - 1][0])},${base}L${f(p[0][0])},${base}Z" fill="url(#${id})"/><path class="ln" d="${d}" fill="none" stroke="${cor}" stroke-width="${sw + .6}" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+(() => { const TIP = document.createElement("div"); TIP.id = "tip"; TIP.style.cssText = "position:fixed;z-index:99;pointer-events:none;display:none;padding:8px 12px;border-radius:12px;background:var(--card);color:var(--ink);box-shadow:0 10px 30px rgba(0,0,0,.2);font-size:12px;font-weight:600;border:1px solid var(--line);white-space:nowrap"; document.body.append(TIP);
+  document.addEventListener("mouseover", e => { const t = e.target; if (!suave() || !(t instanceof SVGElement) || t.closest(".ico")) { TIP.style.display = "none"; return; }
+    let ti = t.querySelector(":scope > title"); if (!ti) { const g = t.closest("g"), ts = g ? g.querySelectorAll("title") : []; if (ts.length === 1) ti = ts[0]; }
+    if (ti) { t.dataset.tip = ti.textContent; ti.remove(); }
+    const txt = t.dataset.tip || t.closest("g")?.dataset.tip; if (txt) { TIP.textContent = txt; TIP.style.display = "block"; } else TIP.style.display = "none"; });
+  document.addEventListener("mousemove", e => { if (TIP.style.display === "block") { TIP.style.left = Math.min(e.clientX + 14, innerWidth - TIP.offsetWidth - 8) + "px"; TIP.style.top = (e.clientY + 16) + "px"; } });
+  document.addEventListener("mouseout", e => { if (!e.relatedTarget) TIP.style.display = "none"; }); })();
 function diario(arr, cor) {
   const n = ultimoDia(S.mes), dias = Array(n).fill(0);
   arr.forEach(l => dias[Number(l.data.slice(8)) - 1] += l.valor);
   const max = Math.max(...dias, 1), W = 320, H = 110, x = i => 6 + i * (W - 12) / (n - 1), y = v => H - 16 - v / max * (H - 26);
-  const pts = dias.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><polygon points="6,${H - 16} ${pts} ${W - 6},${H - 16}" fill="${cor}" opacity=".18"/><polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="1.6"/>
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%">${linhaArea(dias.map((v, i) => [x(i), y(v)]), 6, W - 6, H - 16, cor, .18, 1.6)}
   ${[1, 5, 10, 15, 20, 25, n].map(d => `<text x="${x(d - 1)}" y="${H - 3}" font-size="8" text-anchor="middle" fill="currentColor" opacity=".55">${pad(d)}</text>`).join("")}
   <text x="6" y="9" font-size="8" fill="currentColor" opacity=".55">máx. ${brl(max)}</text></svg>`;
 }
@@ -306,8 +320,8 @@ function detalhe(d) {
 }
 function evolucao7() {
   const fim = hoje(), dias = Array.from({ length: 7 }, (_, i) => addDias(fim, i - 6)), vs = dias.map(d => total(S.data.lancamentos.filter(l => l.tipo === "despesa" && l.data === d)));
-  const max = Math.max(...vs, 1), W = 320, H = 130, x = i => 16 + i * (W - 32) / 6, y = v => H - 26 - v / max * (H - 44), pts = vs.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><polygon points="16,${H - 26} ${pts} ${W - 16},${H - 26}" fill="#d9483b" opacity=".12"/><polyline points="${pts}" fill="none" stroke="#d9483b" stroke-width="1.8"/>
+  const max = Math.max(...vs, 1), W = 320, H = 130, x = i => 16 + i * (W - 32) / 6, y = v => H - 26 - v / max * (H - 44);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%">${linhaArea(vs.map((v, i) => [x(i), y(v)]), 16, W - 16, H - 26, "#d9483b", .12, 1.8)}
   ${vs.map((v, i) => `<g data-act="dia" data-d="${dias[i]}" style="cursor:pointer"><rect x="${x(i) - 20}" y="0" width="40" height="${H}" fill="transparent"/><circle cx="${x(i)}" cy="${y(v)}" r="3" fill="#d9483b"><title>${dataBR(dias[i])}: ${brl(v)}</title></circle><text x="${x(i)}" y="${H - 8}" font-size="8.5" text-anchor="middle" fill="currentColor" opacity=".6">${dataBR(dias[i]).slice(0, 5)}</text></g>`).join("")}</svg>
   <div class="sum" style="margin-top:2px">Total nos 7 dias: <b class="neg">${brl(total(vs.map(v => ({ valor: v }))))}</b> · toque em um dia para ver</div>`;
 }
@@ -1513,7 +1527,7 @@ function exportarBackup() {
 /* ---------- temas (aparência e animações) ---------- */
 const ANIM_GRAFICOS = "@keyframes mfGrowX{from{transform:scaleX(0)}to{transform:none}}@keyframes mfGrowY{from{transform:scaleY(0)}to{transform:none}}@keyframes mfDraw{from{stroke-dashoffset:3000}to{stroke-dashoffset:0}}@keyframes mfFade{from{opacity:0}}@keyframes mfUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}@keyframes mfDonut{from{opacity:0;transform:rotate(-90deg)}to{opacity:1;transform:none}}"
  + "body.mf-anim .bar .t{transform-origin:left;animation:mfGrowX .8s cubic-bezier(.2,.8,.2,1) both}body.mf-anim .prog i{transform-origin:left;animation:mfGrowX .9s cubic-bezier(.2,.8,.2,1) both}"
- + "body.mf-anim svg:not(.ico) polyline{stroke-dasharray:3000;animation:mfDraw 1.3s ease both}body.mf-anim svg:not(.ico) polygon{animation:mfFade 1.4s ease both}"
+ + "body.mf-anim svg:not(.ico) polyline{stroke-dasharray:3000;animation:mfDraw 1.3s ease both}body.mf-anim .ln{stroke-dasharray:3000;animation:mfDraw 1.4s ease both}body.mf-anim .ar{animation:mfFade 1.4s ease both}body.mf-anim svg:not(.ico) polygon{animation:mfFade 1.4s ease both}"
  + "body.mf-anim svg:not(.ico) rect[rx]{transform-box:fill-box;transform-origin:bottom;animation:mfGrowY .8s cubic-bezier(.2,.8,.2,1) both}body.mf-anim .donut .sl{transform-box:view-box;transform-origin:21px 21px;animation:mfDonut .9s ease both}body.mf-anim main .card{animation:mfUp .45s ease both}"
  + "body.mf-anim .bar:nth-child(2) .t,body.mf-anim svg:not(.ico) g:nth-child(3) rect[rx]{animation-delay:.06s}body.mf-anim .bar:nth-child(3) .t,body.mf-anim svg:not(.ico) g:nth-child(4) rect[rx]{animation-delay:.12s}body.mf-anim .bar:nth-child(4) .t,body.mf-anim svg:not(.ico) g:nth-child(5) rect[rx]{animation-delay:.18s}body.mf-anim .bar:nth-child(5) .t,body.mf-anim svg:not(.ico) g:nth-child(6) rect[rx]{animation-delay:.24s}body.mf-anim .bar:nth-child(n+6) .t,body.mf-anim svg:not(.ico) g:nth-child(n+7) rect[rx]{animation-delay:.3s}"
  + "svg:not(.ico) rect[rx]{transition:filter .15s}svg:not(.ico) rect[rx]:hover{filter:brightness(1.12)}svg circle[r=\"3\"]{transition:r .15s}svg circle[r=\"3\"]:hover{r:5}@media (prefers-reduced-motion:reduce){body.mf-anim *{animation:none!important}}";
@@ -1523,14 +1537,25 @@ const FLUXO_CSS = "body{background:radial-gradient(1100px 520px at 8% -8%,#dfeaf
  + ".side button,.bot button{transition:background .18s ease,transform .15s ease}.side button:hover{transform:translateX(2px)}.side button.on,.bot button.on{box-shadow:0 6px 16px color-mix(in srgb,var(--pri) 28%,transparent)}"
  + ".row{border-radius:12px;transition:background .15s ease}.row:hover{background:var(--soft)}.val,.b,.bv{font-variant-numeric:tabular-nums}.mes{box-shadow:inset 0 0 0 1px var(--line)}"
  + ".modal{border-radius:24px;animation:mfPop .26s cubic-bezier(.2,.8,.2,1)}.toast{animation:mfUp .3s ease}@keyframes mfPop{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}";
-const TEMAS_PRONTOS = [{ id: "fluxo", nome: "Fluxo (animado)", graf: true,
+const FLORESTA_CSS = "body{background:radial-gradient(900px 520px at 12% -5%,#d9eee4 0,transparent 62%),radial-gradient(800px 480px at 100% 5%,#f8efd2 0,transparent 55%),linear-gradient(#f7faf6,#eef4f0);background-attachment:fixed;letter-spacing:-.005em}html.dark body{background:radial-gradient(900px 500px at 10% -5%,#123428 0,transparent 60%),radial-gradient(800px 480px at 100% 5%,#2a2410 0,transparent 55%),#0c1511;background-attachment:fixed}"
+ + "h2{font-size:26px;letter-spacing:-.03em}.card>h3{font-weight:700;letter-spacing:-.01em}"
+ + ".top{background:rgba(255,255,255,.66);backdrop-filter:blur(16px);border-bottom:1px solid rgba(20,87,63,.08)}html.dark .top{background:rgba(20,32,26,.7)}"
+ + ".side{background:#101a16;border:0;border-radius:28px;margin:10px 0 10px 8px;padding:12px 0;box-shadow:0 14px 32px rgba(16,26,22,.28)}.side button{color:#9db3a8;transition:background .18s,transform .15s,color .18s}.side button:hover{background:rgba(255,255,255,.09);color:#fff;transform:none}.side button.on{background:#f2b33d;color:#1b1b16;box-shadow:0 6px 16px rgba(242,179,61,.4)}.side hr{border-top-color:rgba(255,255,255,.14)}"
+ + ".card{border-radius:24px;border:1px solid rgba(255,255,255,.75);background:rgba(255,255,255,.84);backdrop-filter:blur(10px);transition:transform .22s ease,box-shadow .22s ease}.card:hover{transform:translateY(-2px);box-shadow:0 16px 36px rgba(16,50,36,.12)}html.dark .card{background:rgba(20,32,26,.86);border-color:var(--line)}"
+ + ".fab,.btn:not(.ghost):not(.danger){background:#14573f;color:#fff;transition:transform .15s ease,filter .15s ease,box-shadow .2s}.fab:hover,.btn:not(.ghost):not(.danger):hover{filter:brightness(1.12);box-shadow:0 8px 20px rgba(20,87,63,.35)}html.dark .fab,html.dark .btn:not(.ghost):not(.danger){background:#2f9e73}.btn:active,.fab:active{transform:scale(.95)}"
+ + ".seg{border:0;background:var(--soft);border-radius:99px;padding:3px;gap:2px}.seg button{border-radius:99px;transition:background .2s,color .2s}.seg button.on{background:#101a16;color:#fff}html.dark .seg button.on{background:#e7f1ec;color:#10201a}.seg.per{background:rgba(255,255,255,.85)}"
+ + ".tabs{border:0;background:var(--soft);border-radius:99px;padding:4px;gap:4px}.tabs button{border:0;border-radius:99px;transition:background .2s,color .2s}.tabs button.on,.tabs button.on.d,.tabs button.on.rc{background:#101a16;color:#fff}html.dark .tabs button.on,html.dark .tabs button.on.d,html.dark .tabs button.on.rc{background:#e7f1ec;color:#10201a}"
+ + ".mes{background:rgba(255,255,255,.85);box-shadow:0 1px 3px rgba(16,40,30,.1)}html.dark .mes{background:var(--soft)}.stat .dot{border-radius:12px;width:40px;height:40px}.stat .v{font-size:19px;letter-spacing:-.02em}.val,.b,.bv{font-variant-numeric:tabular-nums}"
+ + ".row{border-radius:14px;transition:background .15s ease}.row:hover{background:var(--soft)}.cd{border-radius:14px}.prog,.prog i{border-radius:99px}"
+ + ".modal{border-radius:26px;animation:mfPop .26s cubic-bezier(.2,.8,.2,1)}.toast{animation:mfUp .3s ease}@keyframes mfPop{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}";
+const TEMAS_PRONTOS = [{ id: "floresta", nome: "Floresta (estilo do vídeo)", graf: true, curvas: true,
+  claro: { "--bg": "#f5f8f4", "--card": "#ffffff", "--ink": "#10201a", "--mut": "#6e7f76", "--line": "#e4ece6", "--soft": "#eef4ef", "--pri": "#14573f", "--ok": "#1f8a5b", "--warn": "#e8a21b", "--shadow": "0 1px 2px rgba(16,40,30,.05),0 12px 30px rgba(16,40,30,.07)" },
+  escuro: { "--bg": "#0c1511", "--card": "#14201a", "--ink": "#e7f1ec", "--mut": "#8ba197", "--line": "#22332b", "--soft": "#1a2a22", "--pri": "#4cc48f", "--shadow": "0 1px 3px rgba(0,0,0,.45)" },
+  css: FLORESTA_CSS },
+  { id: "fluxo", nome: "Fluxo (azul)", graf: true,
   claro: { "--bg": "#f3f6fc", "--card": "#ffffff", "--ink": "#1b2437", "--mut": "#66728a", "--line": "#e4e9f3", "--soft": "#eef2fa", "--pri": "#3b7ddd", "--shadow": "0 1px 2px rgba(40,70,130,.06),0 10px 28px rgba(40,70,130,.09)" },
   escuro: { "--bg": "#0e1320", "--card": "#171d2c", "--ink": "#e8edf7", "--mut": "#97a3ba", "--line": "#262e42", "--soft": "#1f2638", "--pri": "#6ba3f5", "--shadow": "0 1px 3px rgba(0,0,0,.45)" },
-  css: FLUXO_CSS },
-  { id: "suave", nome: "Suave (verde)", graf: true,
-  claro: { "--bg": "#f3f7f5", "--card": "#ffffff", "--ink": "#17332a", "--mut": "#6a7f77", "--line": "#e2ebe6", "--soft": "#ecf3ef", "--pri": "#1f8a63", "--ok": "#1f8a63", "--shadow": "0 1px 2px rgba(20,60,45,.05),0 10px 28px rgba(20,60,45,.08)" },
-  escuro: { "--bg": "#0f1714", "--card": "#17211d", "--ink": "#e6f0ec", "--mut": "#8fa69d", "--line": "#243630", "--soft": "#1d2b26", "--pri": "#37b886", "--shadow": "0 1px 3px rgba(0,0,0,.4)" },
-  css: ".card{border-radius:18px;border-color:transparent;transition:transform .2s ease,box-shadow .2s ease}.card:hover{transform:translateY(-2px)}.btn,.fab{transition:transform .15s ease,filter .15s ease}.btn:active,.fab:active{transform:scale(.95)}.fab:hover{transform:scale(1.08)}.row{transition:background .15s ease}.modal{animation:mfPop .25s ease}@keyframes mfPop{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}" }];
+  css: FLUXO_CSS }];
 const TEMA_MODELO = { nome: "Nome do tema", claro: { "--bg": "#f2f5fb", "--card": "#fff", "--ink": "#1f2937", "--mut": "#6b7280", "--line": "#e6eaf2", "--soft": "#eef2f9", "--pri": "#3b7ddd", "--ok": "#2e9e5b", "--bad": "#d9483b", "--warn": "#f29a38", "--shadow": "0 1px 3px rgba(30,50,90,.08)" }, escuro: { "--bg": "#12151c", "--card": "#1b2029", "--ink": "#e8ecf3", "--mut": "#9aa4b5", "--line": "#2a313d", "--soft": "#232a36", "--pri": "#5b97ee" }, css: "/* CSS extra: bordas, sombras, fontes e animações (@keyframes). Classes: .card .btn .fab .row .modal .side .top */" };
 const temasSalvos = () => by("config", "temas") || {};
 const temasTodos = () => [...TEMAS_PRONTOS, ...(temasSalvos().lista || [])];
@@ -1555,7 +1580,7 @@ function temaInicial() {
   } catch (e) {}
 }
 temaInicial();
-const sincronizarTema = () => { if (!(S.carregado || S.demo)) return; const t = temaAtivo(), g = !!(t?.graf || temasSalvos().graficos); aplicarTema(t || g ? { ...(t || {}), graf: g } : null); };
+const sincronizarTema = () => { if (!(S.carregado || S.demo)) return; const t = temaAtivo(); document.body.classList.toggle("mf-curvas", !!t?.curvas); const g = !!(t?.graf || temasSalvos().graficos); aplicarTema(t || g ? { ...(t || {}), graf: g } : null); };
 async function salvarTemas(o) { await store.set("config", "temas", { lista: temasSalvos().lista || [], ativo: temasSalvos().ativo || "", graficos: !!temasSalvos().graficos, ...o }); }
 const cardTemas = () => { const at = temasSalvos().ativo || "", linha = (id, nome, sub, del) => `<div class="row" data-act="tema" data-id="${esc(id)}"><div class="tx"><div>${esc(nome)}</div><small>${esc(sub)}</small></div>${del ? `<button class="btn danger" data-act="temaDel" data-id="${esc(id)}">Excluir</button>` : ""}<span class="ck ${at === id || (!at && id === "padrao") ? "on" : ""}">✓</span></div>`;
   return `<div class="card" style="max-width:520px;margin-bottom:14px"><h3>Aparência e animações</h3>
