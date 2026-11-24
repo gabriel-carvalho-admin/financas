@@ -1039,14 +1039,27 @@ function porGrupoHtml(titulo, ls, cor, linhas = true) {
   return `<div class="sec"><span>${titulo}</span><b class="${cor}">${brl(total(ls))}</b></div>${porCategoria(ls).map(g => { const it = ls.filter(l => (l.emprestimo ? "__emp" : l.categoriaId || "") === g.id).sort((a, b) => a.data.localeCompare(b.data));
     return `<div class="grp"><div class="gl" style="margin:8px 0 2px"><i class="lg" style="background:${esc(g.c.cor)}"></i><b>${esc(g.c.icone + " " + g.c.nome)}</b><span>${it.length} ${it.length === 1 ? "lançamento" : "lançamentos"} · ${g.p.toFixed(0)}%</span><b class="${cor}">${brl(g.v)}</b></div>${linhas ? it.map(linha).join("") : `<div class="prog" style="margin-bottom:6px"><i style="width:${g.p}%;background:${esc(g.c.cor)}"></i></div>`}</div>`; }).join("")}`;
 }
+// Datas importantes do mês: vencimento e fechamento de cada cartão, e dia de pagar cada conta mensal
+function eventosMes(ym) {
+  const ev = [], curto = n => String(n || "").split(" ")[0];
+  for (const c of S.data.cartoes) {
+    const ft = fatTotal(c.id, ym), p = c.pagas?.[ym], vd = dataNoMes(ym, c.vencimento || 10), fd = dataNoMes(ym, c.fechamento || 1);
+    ev.push({ d: vd, t: "venc", ord: 0, rot: `Vence ${c.nome}`, curto: `Vence ${curto(c.nome)}`, v: p ? p.valor : ft, ok: !!p, cor: p ? "#2e9e5b" : "#d9483b", sub: p ? "Fatura paga" : ft > 0 ? "Fatura a pagar" : "Sem gastos" });
+    ev.push({ d: fd, t: "fech", ord: 1, rot: `Fecha ${c.nome}`, curto: `Fecha ${curto(c.nome)}`, v: null, ok: false, cor: "#3b7ddd", sub: "Compras depois deste dia vão para a próxima fatura" });
+  }
+  for (const x of fixasMes(ym)) ev.push({ d: x.venc, t: "fixa", ord: 2, rot: x.f.nome, curto: x.f.nome, v: x.l?.valor ?? null, ok: x.k === 3, cor: x.k === 3 ? "#2e9e5b" : x.k === 0 ? "#d9483b" : "#f29a38", sub: x.txt });
+  return ev.filter(e => e.d.startsWith(ym)).sort((p, q) => p.d.localeCompare(q.d) || p.ord - q.ord || p.rot.localeCompare(q.rot));
+}
+const evHtml = e => `<div class="evr"><i class="evd" style="background:${e.cor}"></i><div class="tx"><b>${e.t === "venc" ? "💳" : e.t === "fech" ? "✂️" : "🔔"} ${esc(e.rot)}</b><small>${esc(e.sub)}</small></div>${e.v != null && e.v > 0 ? `<b class="${e.ok ? "pos" : "neg"}">${S.priv ? "••" : brl(e.v)}</b>` : ""}${e.ok ? '<span class="tag" style="background:#2e9e5b">✓</span>' : ""}</div>`;
 V.calendario = () => {
-  const ym = S.mes, n = ultimoDia(ym), ini = new Date(`${ym}-01T12:00`).getDay(), cel = [];
+  const ym = S.mes, n = ultimoDia(ym), ini = new Date(`${ym}-01T12:00`).getDay(), cel = [], ev = eventosMes(ym);
   for (let i = 0; i < ini; i++) cel.push('<div class="cd vz"></div>');
-  for (let dia = 1; dia <= n; dia++) { const d = `${ym}-${pad(dia)}`, ls = S.data.lancamentos.filter(l => l.data === d), des = total(ls.filter(l => l.tipo === "despesa")), rec = total(ls.filter(l => l.tipo === "receita"));
-    const venc = S.data.cartoes.some(c => dataNoMes(ym, c.vencimento || 10) === d && fatTotal(c.id, ym) > 0 && !c.pagas?.[ym]), fx = fixasMes(ym).some(x => x.k !== 3 && x.venc === d);
-    cel.push(`<button class="cd ${d === hoje() ? "hj" : ""}" data-act="dia" data-d="${d}"><b>${dia}</b>${rec ? `<span class="pos">+${S.priv ? "••" : rec.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}${des ? `<span class="neg">-${S.priv ? "••" : des.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}<i>${venc ? "💳" : ""}${fx ? "🔔" : ""}</i></button>`); }
+  for (let dia = 1; dia <= n; dia++) { const d = `${ym}-${pad(dia)}`, ls = S.data.lancamentos.filter(l => l.data === d), des = total(ls.filter(l => l.tipo === "despesa")), rec = total(ls.filter(l => l.tipo === "receita")), es = ev.filter(e => e.d === d);
+    const pills = es.slice(0, 3).map(e => `<em class="evp" style="background:${e.cor}" title="${esc(e.rot)}">${e.t === "venc" ? "💳" : e.t === "fech" ? "✂️" : "🔔"} ${esc(e.curto)}</em>`).join("") + (es.length > 3 ? `<em class="evp mais">+${es.length - 3}</em>` : "");
+    cel.push(`<button class="cd ${d === hoje() ? "hj" : ""}${es.some(e => e.t === "venc" && !e.ok) ? " cv" : ""}" data-act="dia" data-d="${d}"><b>${dia}</b>${pills}${rec ? `<span class="pos">+${S.priv ? "••" : rec.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}${des ? `<span class="neg">-${S.priv ? "••" : des.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>` : ""}</button>`); }
   return `<h2 style="margin-bottom:12px">Calendário</h2><div class="card"><div class="cal">${["dom", "seg", "ter", "qua", "qui", "sex", "sáb"].map(x => `<div class="cdh">${x}</div>`).join("")}${cel.join("")}</div>
-  <div class="sum"><span class="pos">+ receitas do dia</span><span class="neg">− despesas do dia</span><span>💳 vencimento de fatura</span><span>🔔 conta mensal a pagar</span></div><div class="sum">Toque em um dia para ver as entradas e as despesas separadas por grupo, ou adicionar um lançamento naquela data.</div></div>
+  <div class="sum calleg"><span><i class="evd" style="background:#d9483b"></i>💳 vence fatura</span><span><i class="evd" style="background:#3b7ddd"></i>✂️ fecha fatura</span><span><i class="evd" style="background:#f29a38"></i>🔔 conta a pagar</span><span><i class="evd" style="background:#2e9e5b"></i>✓ já pago</span><span class="pos">+ entradas</span><span class="neg">− despesas</span></div></div>
+  <div class="card" style="margin-top:14px"><h3>Datas importantes de ${NOME_MES(ym)}</h3>${ev.length ? [...new Set(ev.map(e => e.d))].map(d => `<div class="evday ${d === hoje() ? "hj" : ""}"><div class="evn"><b>${Number(d.slice(8))}</b><small>${DIAS[new Date(d + "T12:00").getDay()]}</small></div><div class="evl">${ev.filter(e => e.d === d).map(evHtml).join("")}</div></div>`).join(""): '<div class="empty">Cadastre cartões e contas mensais para ver as datas aqui.</div>'}</div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(290px,1fr));align-items:start;margin-top:14px">
     <div class="card"><h3>Entradas do mês por grupo</h3>${porGrupoHtml("Total de entradas", doMes("receita", ym), "pos", false) || '<div class="empty">Nenhuma entrada neste mês.</div>'}</div>
     <div class="card"><h3>Despesas do mês por grupo</h3>${porGrupoHtml("Total de despesas", doMes("despesa", ym), "neg", false) || '<div class="empty">Nenhuma despesa neste mês.</div>'}</div>
@@ -1497,6 +1510,7 @@ const A = {
     onSave: async v => { const x = parseMoney(v.v); if (x <= 0) { toast("Informe o valor."); return false; } await store.set("objetivos", o.id, { ...o, guardado: r2(Math.max(0, (o.guardado || 0) + s * x)) }); } }); },
   dia: d => { const ls = S.data.lancamentos.filter(l => l.data === d.d), rec = ls.filter(l => l.tipo === "receita"), des = ls.filter(l => l.tipo === "despesa"), tr = ls.filter(l => l.tipo === "transferencia");
     $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:520px"><h2>${dataBR(d.d)} <small class="mut" style="font-weight:400;font-size:13px">${DIAS[new Date(d.d + "T12:00").getDay()]}</small></h2>
+    ${(() => { const es = eventosMes(d.d.slice(0, 7)).filter(e => e.d === d.d); return es.length ? `<div class="sec">Datas importantes</div>${es.map(evHtml).join("")}` : ""; })()}
     ${ls.length ? `<div class="tri" style="font-size:14px;margin-bottom:6px"><div><small>Entradas</small><b class="pos">${brl(total(rec))}</b></div><div><small>Despesas</small><b class="neg">${brl(total(des))}</b></div><div><small>Resultado do dia</small><b class="${cls(total(rec) - total(des))}">${brl(total(rec) - total(des))}</b></div></div>` : ""}
     ${porGrupoHtml("Entradas", rec, "pos")}${porGrupoHtml("Despesas", des, "neg")}${tr.length ? `<div class="sec">Transferências</div>${tr.map(linha).join("")}` : ""}${ls.length ? "" : '<div class="empty">Nenhum lançamento neste dia.</div>'}
     <div class="acts"><button class="btn" data-act="novoDia" data-d="${d.d}">+ Lançamento neste dia</button><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
