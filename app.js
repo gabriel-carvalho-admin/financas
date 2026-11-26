@@ -568,7 +568,7 @@ function formEmprestimo(pid, id) {
     onDelete: o ? () => store.del("lancamentos", o.id) : null });
 }
 function contaPessoa(pid, ym = S.mes) {
-  const fim = `${ym}-31`, ls = S.data.lancamentos.filter(l => l.pessoaId === pid && l.data <= fim);
+  const fim = `${ym}-31`, ls = S.data.lancamentos.filter(l => l.pessoaId === pid && (l.tipo === "despesa" ? mesComp(l) <= ym : l.data <= fim));
   const gasto = total(ls.filter(l => l.tipo === "despesa")), pago = total(ls.filter(l => l.tipo === "receita" && l.reembolso));
   return { gasto, pago, deve: r2(gasto - pago) };
 }
@@ -596,7 +596,7 @@ V.pessoas = () => {
       <div class="grid cc pgrp" data-grupo="${k}">${g.map(p => card(p, gastosDe(p.id))).join("")}<div class="vazio">${emp ? "Arraste ou cadastre uma empresa aqui" : "Arraste alguém para cá"}</div></div>`; };
     return `<div class="pe"><div>${GRUPOS.filter(([k]) => k !== "empresas").map(bloco).join("")}</div><div class="pe-emp">${bloco(GRUPOS.find(([k]) => k === "empresas"))}</div></div>`; })()}
   <div class="sum"><span>Meus gastos no mês: <b>${brl(total(meus))}</b></span><span>Gastos de pessoas e empresas no mês: <b>${brl(outros)}</b></span><span>Total a receber até ${mesNome}: <b class="neg">${brl(r2(ps.reduce((s0, p) => s0 + Math.max(0, contaPessoa(p.id).deve), 0)))}</b></span></div>
-  <div class="sum">${ps.length ? "Total a cobrar (gastos + empréstimos), já pagou e ainda deve somam tudo desde o início até o mês selecionado. Arraste pelo botão ⠿ para mudar a pessoa de grupo ou de ordem." : ""}</div>
+  <div class="sum">${ps.length ? "Total a cobrar (gastos + empréstimos), já pagou e ainda deve somam tudo desde o início até o mês selecionado. Compras no cartão entram no mês em que a fatura vem, não no dia da compra. Arraste pelo botão ⠿ para mudar a pessoa de grupo ou de ordem." : ""}</div>
   ${ps.length ? "" : '<div class="sum">Cadastre as pessoas da casa e, em cada despesa, escolha de quem é o gasto.</div>'}`;
 };
 V.veiculos = () => {
@@ -1658,14 +1658,14 @@ const A = {
     $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>Fatura — ${esc(by("cartoes", d.id).nome)}</h2>${it.map(l => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${sub(l)}</small></div><b>${brl(l.valor)}</b></div>`).join("") || '<div class="empty">Nenhuma despesa nesta fatura.</div>'}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   verPessoa: d => { const validos = new Set(S.data.pessoas.map(p => p.id)), p = by("pessoas", d.id), c = p ? contaPessoa(p.id) : null;
-    const it = (p ? S.data.lancamentos.filter(l => l.tipo === "despesa" && l.data <= `${S.mes}-31`) : doMes("despesa")).filter(l => !l.emprestimo && (p ? l.pessoaId === p.id : !validos.has(l.pessoaId))).sort((a, b) => a.data.localeCompare(b.data));
-    const porMes = p ? [...new Set(it.map(l => ymOf(l.data)))].sort().reverse() : [];
+    const it = (p ? S.data.lancamentos.filter(l => l.tipo === "despesa" && mesComp(l) <= S.mes) : doMes("despesa")).filter(l => !l.emprestimo && (p ? l.pessoaId === p.id : !validos.has(l.pessoaId))).sort((a, b) => a.data.localeCompare(b.data));
+    const porMes = p ? [...new Set(it.map(mesComp))].sort().reverse() : [];
     const pg = p ? S.data.lancamentos.filter(l => l.reembolso && l.pessoaId === p.id && l.data <= `${S.mes}-31`).sort((a, b) => b.data.localeCompare(a.data)) : [];
-    const li = (l, k) => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${sub(l)}</small></div><b class="${k}">${brl(l.valor)}</b></div>`;
+    const li = (l, k) => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)}${l.cartaoId && modoFatura() && fatMes(l) !== ymOf(l.data) ? ` · <b>fatura de ${MESES[Number(fatMes(l).slice(5)) - 1].toLowerCase()}</b>` : ""} · ${sub(l)}</small></div><b class="${k}">${brl(l.valor)}</b></div>`;
     $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal"><h2>${esc(p ? p.nome : "Eu")}</h2>
     ${c ? `<div class="tri" style="font-size:14px;margin-bottom:10px"><div><small>Total a cobrar</small>${brl(c.gasto)}</div><div><small>Já pagou</small><span class="pos">${brl(c.pago)}</span></div><div><small>${c.deve < -0.005 ? "Crédito" : "Ainda deve"}</small><b class="${c.deve > 0.005 ? "neg" : "pos"}">${brl(Math.abs(c.deve))}</b></div></div>` : ""}
     ${p && emprestimos(p.id).length ? `<div class="day">Empréstimos</div>${emprestimos(p.id).map(l => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>Emprestado em ${dataBR(l.data)}${l.vencimento ? ` · <span class="${c.deve > 0.005 && l.vencimento < hoje() ? "neg b" : ""}">${c.deve > 0.005 && l.vencimento < hoje() ? "venceu em" : "pagar até"} ${dataBR(l.vencimento)}</span>` : ""}</small></div><b>${brl(l.valor)}</b></div>`).join("")}` : ""}
-    ${p ? (() => { const mesH = it.filter(l => ymOf(l.data) === S.mes), ant = it.filter(l => ymOf(l.data) !== S.mes), nm = MESES[Number(S.mes.slice(5)) - 1].toLowerCase(), grupo = m => `<div class="mut" style="margin:8px 0 2px"><b>${MESES[Number(m.slice(5)) - 1]} ${m.slice(0, 4)}</b> · ${brl(total(it.filter(l => ymOf(l.data) === m)))}</div>${it.filter(l => ymOf(l.data) === m).map(l => li(l, "")).join("")}`;
+    ${p ? (() => { const mesH = it.filter(l => mesComp(l) === S.mes), ant = it.filter(l => mesComp(l) !== S.mes), nm = MESES[Number(S.mes.slice(5)) - 1].toLowerCase(), grupo = m => `<div class="mut" style="margin:8px 0 2px"><b>${MESES[Number(m.slice(5)) - 1]} ${m.slice(0, 4)}</b> · ${brl(total(it.filter(l => mesComp(l) === m)))}</div>${it.filter(l => mesComp(l) === m).map(l => li(l, "")).join("")}`;
       return `<div class="day">Compras de ${nm} — ${brl(total(mesH))}</div>${mesH.map(l => li(l, "")).join("") || '<div class="empty">Nenhuma compra neste mês.</div>'}
       ${ant.length ? `<details style="margin-top:10px"><summary class="link" style="cursor:pointer">Meses anteriores · ${ant.length} ${ant.length === 1 ? "compra" : "compras"} · ${brl(total(ant))}</summary>${porMes.filter(m => m !== S.mes).map(grupo).join("")}</details>` : ""}`; })() : `<div class="day">Despesas do mês — ${brl(total(it))}</div>${it.map(l => li(l, "")).join("") || '<div class="empty">Nenhuma despesa neste mês.</div>'}`}
     ${p ? `<div class="day">Pagamentos recebidos</div>${pg.map(l => li(l, "pos")).join("") || '<div class="empty">Nenhum pagamento registrado.</div>'}` : ""}
