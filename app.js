@@ -283,7 +283,7 @@ function linhaArea(p, xa, xb, base, cor, op, sw) {
   document.addEventListener("mouseout", e => { if (!e.relatedTarget) TIP.style.display = "none"; }); })();
 function diario(arr, cor) {
   const n = ultimoDia(S.mes), dias = Array(n).fill(0);
-  arr.forEach(l => dias[Number(l.data.slice(8)) - 1] += l.valor);
+  arr.forEach(l => { const dd = ymOf(l.data) === S.mes ? Number(l.data.slice(8)) : Math.min(n, by("cartoes", l.cartaoId)?.vencimento || 1); dias[dd - 1] += l.valor; });
   const max = Math.max(...dias, 1), W = 320, H = 110, x = i => 6 + i * (W - 12) / (n - 1), y = v => H - 16 - v / max * (H - 26);
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%">${linhaArea(dias.map((v, i) => [x(i), y(v)]), 6, W - 6, H - 16, cor, .18, 1.6)}
   ${[1, 5, 10, 15, 20, 25, n].map(d => `<text x="${x(d - 1)}" y="${H - 3}" font-size="8" text-anchor="middle" fill="currentColor" opacity=".55">${pad(d)}</text>`).join("")}
@@ -425,16 +425,17 @@ const sub = l => {
   if (l.emprestimo) return ["Empréstimo", l.vencimento ? "pagar até " + dataBR(l.vencimento) : "", onde, by("pessoas", l.pessoaId)?.nome].filter(Boolean).map(esc).join(" · ");
   return [(l.nota ? "📎 " : "") + cat(l.categoriaId).nome + (l.subgrupo ? " › " + l.subgrupo : ""), onde, by("pessoas", l.pessoaId)?.nome, l.veiculoId ? "🚗 " + (by("veiculos", l.veiculoId)?.nome || "") + (l.km ? " · " + Number(l.km).toLocaleString("pt-BR") + " km" : "") + (l.litros ? " · " + String(l.litros).replace(".", ",") + " L" + (l.cheio === false ? " (parcial)" : "") : "") : "", l.parcelas ? `${l.parcela}/${l.parcelas}${l.projetada ? " (prevista)" : ""}` : l.recorrencia === "fixa" ? "fixa" : ""].filter(Boolean).map(esc).join(" · ");
 };
+const fatHint = l => l.cartaoId && modoFatura() && fatMes(l) !== ymOf(l.data) ? ` · <b>fatura de ${MESES[Number(fatMes(l).slice(5)) - 1].toLowerCase()}</b>` : "";
 const linha = (l, sel) => {
   const c = l.tipo === "transferencia" ? { icone: "⇄", cor: "#5b6ee0" } : l.reembolso ? { icone: "↩", cor: by("pessoas", l.pessoaId)?.cor || "#2e9e5b" } : cat(l.emprestimo ? "__emp" : l.categoriaId);
   const sinal = l.tipo === "receita" ? "pos" : l.tipo === "despesa" ? "neg" : "";
-  if (sel instanceof Set) return `<div class="row ${sel.has(l.id) ? "selr" : ""}" data-act="selL" data-id="${l.id}"><span class="ck ${sel.has(l.id) ? "on" : ""}">✓</span>${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${sub(l)}</small></div><span class="val ${sinal}">${l.tipo === "despesa" ? "-" : ""}${brl(l.valor)}</span></div>`;
-  return `<div class="row" data-act="editL" data-id="${l.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${sub(l)}</small></div>
+  if (sel instanceof Set) return `<div class="row ${sel.has(l.id) ? "selr" : ""}" data-act="selL" data-id="${l.id}"><span class="ck ${sel.has(l.id) ? "on" : ""}">✓</span>${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${sub(l)}${fatHint(l)}</small></div><span class="val ${sinal}">${l.tipo === "despesa" ? "-" : ""}${brl(l.valor)}</span></div>`;
+  return `<div class="row" data-act="editL" data-id="${l.id}">${av(c.icone, c.cor)}<div class="tx"><div>${esc(l.descricao)}</div><small>${sub(l)}${fatHint(l)}</small></div>
   <span class="val ${sinal}">${l.tipo === "despesa" ? "-" : ""}${brl(l.valor)}</span>${l.cartaoId ? '<span class="ck" style="border:0;color:var(--mut)">💳</span>' : `<button class="ck ${l.efetivada ? "on" : ""}" data-act="toggleL" data-id="${l.id}" title="Efetivada">✓</button>`}</div>`;
 };
 function lancFiltrados() {
   const q = S.busca.toLowerCase();
-  let arr = S.data.lancamentos.filter(l => ymOf(l.data) === S.mes);
+  let arr = S.data.lancamentos.filter(l => mesComp(l) === S.mes);
   if (S.filtro === "pendentes") arr = arr.filter(l => !l.efetivada && !l.cartaoId);
   else if (S.filtro !== "todos") arr = arr.filter(l => l.tipo === S.filtro);
   if (q) arr = arr.filter(l => (l.descricao + " " + cat(l.categoriaId).nome + " " + (l.subgrupo || "")).toLowerCase().includes(q));
@@ -601,7 +602,7 @@ V.pessoas = () => {
 };
 V.veiculos = () => {
   const vs = [...S.data.veiculos].sort((a, b) => a.nome.localeCompare(b.nome)), mesNome = MESES[Number(S.mes.slice(5)) - 1].toLowerCase(), ano = S.mes.slice(0, 4);
-  const doV = id => S.data.lancamentos.filter(l => l.tipo === "despesa" && l.veiculoId === id), mesV = id => doV(id).filter(l => ymOf(l.data) === S.mes), anoV = id => doV(id).filter(l => l.data.slice(0, 4) === ano);
+  const doV = id => S.data.lancamentos.filter(l => l.tipo === "despesa" && l.veiculoId === id), mesV = id => doV(id).filter(l => mesComp(l) === S.mes), anoV = id => doV(id).filter(l => mesComp(l).slice(0, 4) === ano);
   const semV = doMes("despesa").filter(l => !l.veiculoId && /carro|moto|combust|transporte|ve[ií]culo/i.test(cat(l.categoriaId).nome));
   const card = x => { const m = mesV(x.id), t = total(m), rk = porCategoria(m).slice(0, 3), dono = x.dono ? by("pessoas", x.dono)?.nome : "";
     return `<div class="card pcard" data-act="verVeiculo" data-id="${x.id}"><div class="hd">${av(VEIC_ICO[x.tipo] || "🚗", x.cor)}<div class="tx"><b>${esc(x.nome)}</b><small>${[x.placa, dono ? "de " + dono : ""].filter(Boolean).map(esc).join(" · ") || m.length + (m.length === 1 ? " despesa no mês" : " despesas no mês")}</small></div>
@@ -1439,11 +1440,11 @@ function abrirVeiculo(id, tab = "todas") {
   let st = "";
   if (tab === "comb") { const ab = ls.filter(l => Number(l.litros) > 0), lt = ab.reduce((a, l) => a + Number(l.litros), 0), gl = ab.reduce((a, l) => a + l.valor, 0);
     const o = [...ab].sort((a, b) => a.data.localeCompare(b.data) || a.km - b.km).filter(l => Number(l.km) > 0), ch = o.map((l, i) => l.cheio === false ? -1 : i).filter(i => i >= 0), i0 = ch[0], i1 = ch[ch.length - 1], conj = ch.length > 1 ? o.slice(i0 + 1, i1 + 1) : [], rod = conj.length ? o[i1].km - o[i0].km : 0, lc = conj.reduce((a, l) => a + Number(l.litros), 0);
-    st = `<div class="tri" style="font-size:14px;margin-bottom:6px">${box("No mês", brl(total(ls.filter(l => ymOf(l.data) === S.mes))))}${box("Litros no total", lt ? lt.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " L" : "—")}${box("Preço médio/L", lt ? brl(gl / lt) : "—")}</div>
+    st = `<div class="tri" style="font-size:14px;margin-bottom:6px">${box("No mês", brl(total(ls.filter(l => mesComp(l) === S.mes))))}${box("Litros no total", lt ? lt.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " L" : "—")}${box("Preço médio/L", lt ? brl(gl / lt) : "—")}</div>
     <div class="sum" style="justify-content:flex-start;gap:6px 14px;margin:0 0 8px"><span>${ab.length} ${ab.length === 1 ? "abastecimento" : "abastecimentos"}</span>${rod > 0 && lc > 0 ? `<span>⛽ Consumo médio <b>${(rod / lc).toFixed(1).replace(".", ",")} km/L</b></span>` : '<span class="mut">Consumo aparece com 2 abastecimentos de tanque cheio e km informado.</span>'}</div>`; }
   else if (tab === "manut" || tab === "pneu") { const u = ls[0];
-    st = `<div class="tri" style="font-size:14px;margin-bottom:8px">${box("No ano", brl(total(ls.filter(l => l.data.slice(0, 4) === ano))))}${box("Total", brl(total(ls)))}${box(tab === "pneu" ? "Última troca/serviço" : "Último serviço", u ? dataBR(u.data).slice(0, 5) + (kmDe(u) ? " · " + kmDe(u) : "") : "—")}</div>`; }
-  else st = `<div class="tri" style="font-size:14px;margin-bottom:8px">${box("No mês", brl(total(ls.filter(l => ymOf(l.data) === S.mes))))}${box("No ano", brl(total(ls.filter(l => l.data.slice(0, 4) === ano))))}${box("Total", brl(total(ls)))}</div>`;
+    st = `<div class="tri" style="font-size:14px;margin-bottom:8px">${box("No ano", brl(total(ls.filter(l => mesComp(l).slice(0, 4) === ano))))}${box("Total", brl(total(ls)))}${box(tab === "pneu" ? "Última troca/serviço" : "Último serviço", u ? dataBR(u.data).slice(0, 5) + (kmDe(u) ? " · " + kmDe(u) : "") : "—")}</div>`; }
+  else st = `<div class="tri" style="font-size:14px;margin-bottom:8px">${box("No mês", brl(total(ls.filter(l => mesComp(l) === S.mes))))}${box("No ano", brl(total(ls.filter(l => mesComp(l).slice(0, 4) === ano))))}${box("Total", brl(total(ls)))}</div>`;
   $("#modal").innerHTML = `<div class="ov" data-act="fechar"><div class="modal" style="max-width:560px"><h2>${VEIC_ICO[x.tipo] || "🚗"} ${esc(x.nome)}</h2>
     <div class="vtabs">${abas.map(([k, n]) => `<button class="${k === tab ? "on" : ""}" data-act="vTab" data-id="${x.id}" data-tab="${k}">${n}${cont(k).length ? ` <small>${cont(k).length}</small>` : ""}</button>`).join("")}</div>
     ${st}<div class="acts" style="margin:0 0 6px"><button class="btn" data-act="novo" data-veiculo="${x.id}">+ Despesa</button></div>
