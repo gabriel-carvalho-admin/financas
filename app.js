@@ -700,19 +700,28 @@ function cascata() {
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" x2="${W - 6}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="currentColor" opacity=".2"/>${g}</svg><div class="sum" style="margin-top:2px"><span>Como as receitas viram saldo neste mês</span></div>`;
 }
 const acc0 = (bs, i) => bs[i].tot ? bs[i].b : bs[i].a;
+const REL_IDS = ["rank", "seis", "diario", "grupos", "cal", "casc", "rosca"], relLay = () => by("config", "relLayout") || {};
+const relOrdem = () => { const o = (relLay().ordem || []).filter(i => REL_IDS.includes(i)); return [...o, ...REL_IDS.filter(i => !o.includes(i))]; };
+async function relSalvar(o) { await store.set("config", "relLayout", { ordem: relOrdem(), tam: relLay().tam || {}, ...o }); render(); }
 V.relatorios = () => {
-  const arr = doMes(S.aba), rk = porCategoria(arr), cor = S.aba === "despesa" ? "#d9483b" : "#2e9e5b";
-  return `<div class="tabs"><button class="d ${S.aba === "despesa" ? "on" : ""}" data-act="aba" data-v="despesa">Despesas</button><button class="rc ${S.aba === "receita" ? "on" : ""}" data-act="aba" data-v="receita">Receitas</button></div>
-  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(290px,1fr))">
-    <div class="card"><h3>Ranking de categorias</h3>${barras(rk)}</div>
-    <div class="card"><h3>${S.aba === "despesa" ? "Despesas" : "Receitas"} por categoria <small class="mut" style="font-weight:400">últimos 6 meses</small></h3>${empilhado(S.aba)}</div>
-    <div class="card"><h3>Evolução diária</h3>${arr.length ? diario(arr, cor) : '<div class="empty">Sem dados neste mês.</div>'}</div>
-    <div class="card"><h3>Grupos e subgrupos</h3>${rk.length ? rk.map(g => { const sm = new Map(); arr.filter(l => (l.categoriaId || "") === g.id).forEach(l => sm.set(l.subgrupo || "Geral", (sm.get(l.subgrupo || "Geral") || 0) + l.valor)); const subs = [...sm].sort((a, b) => b[1] - a[1]);
+  const arr = doMes(S.aba), rk = porCategoria(arr), cor = S.aba === "despesa" ? "#d9483b" : "#2e9e5b", ed = !!S.relEdit, nome = S.aba === "despesa" ? "Despesas" : "Receitas";
+  const vazio = '<div class="empty">Sem dados neste mês.</div>';
+  const C = {
+    rank: ["Ranking de categorias", barras(rk)],
+    seis: [`${nome} por categoria <small class="mut" style="font-weight:400">últimos 6 meses</small>`, empilhado(S.aba)],
+    diario: ["Evolução diária", arr.length ? diario(arr, cor) : vazio],
+    grupos: ["Grupos e subgrupos", `${rk.length ? rk.map(g => { const sm = new Map(); arr.filter(l => (l.categoriaId || "") === g.id).forEach(l => sm.set(l.subgrupo || "Geral", (sm.get(l.subgrupo || "Geral") || 0) + l.valor)); const subs = [...sm].sort((a, b) => b[1] - a[1]);
       return `<div class="gr"><div class="gl"><i class="lg" style="background:${esc(g.c.cor)}"></i><b>${esc(g.c.icone + " " + g.c.nome)}</b><span>${g.p.toFixed(0)}%</span><b>${brl(g.v)}</b></div><div class="prog"><i style="width:${g.v / (rk[0].v || 1) * 100}%;background:${esc(g.c.cor)}"></i></div>
-      ${subs.length === 1 && subs[0][0] === "Geral" ? "" : subs.map(([n, v]) => `<div class="sg"><span>${esc(n)}</span><div class="prog"><i style="width:${v / (g.v || 1) * 100}%;background:${esc(g.c.cor)};opacity:.6"></i></div><span>${brl(v)}</span></div>`).join("")}</div>`; }).join("") : '<div class="empty">Sem dados neste mês.</div>'}</div>
-    ${suave() ? `<div class="card"><h3>Calendário de ${S.aba === "despesa" ? "gastos" : "entradas"} <small class="mut" style="font-weight:400">intensidade por dia</small></h3>${arr.length ? mapaCalor(arr, cor) : '<div class="empty">Sem dados neste mês.</div>'}</div><div class="card"><h3>Cascata do mês</h3>${cascata()}</div>` : ""}
-    <div class="card"><h3>${S.aba === "despesa" ? "Despesas" : "Receitas"} por categoria</h3>${donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(total(arr)))}</div>
-  </div>`;
+      ${subs.length === 1 && subs[0][0] === "Geral" ? "" : subs.map(([n, v]) => `<div class="sg"><span>${esc(n)}</span><div class="prog"><i style="width:${v / (g.v || 1) * 100}%;background:${esc(g.c.cor)};opacity:.6"></i></div><span>${brl(v)}</span></div>`).join("")}</div>`; }).join("") : '<div class="empty">Sem dados neste mês.</div>'}`],
+    cal: [`Calendário de ${S.aba === "despesa" ? "gastos" : "entradas"} <small class="mut" style="font-weight:400">intensidade por dia</small>`, arr.length ? mapaCalor(arr, cor) : vazio],
+    casc: ["Cascata do mês", cascata()],
+    rosca: [`${nome} por categoria`, donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(total(arr)))]
+  };
+  const tam = relLay().tam || {}, ordem = relOrdem().filter(i => suave() || (i !== "cal" && i !== "casc"));
+  const cards = ordem.map((id, k) => `<div class="card rcard t${tam[id] || 1}${ed ? " ed" : ""}" data-rid="${id}" ${ed ? 'draggable="true"' : ""}>${ed ? `<div class="rtool"><span class="rgrip" title="Arraste para mudar de lugar">⠿</span><button class="rb" data-act="relMove" data-id="${id}" data-d="-1" ${k ? "" : "disabled"} title="Mover para trás">◀</button><button class="rb" data-act="relMove" data-id="${id}" data-d="1" ${k < ordem.length - 1 ? "" : "disabled"} title="Mover para frente">▶</button><span class="rsp"></span>${[[1, "P"], [2, "M"], [3, "G"]].map(([n, t]) => `<button class="rb${(tam[id] || 1) === n ? " on" : ""}" data-act="relTam" data-id="${id}" data-v="${n}" title="${["Pequeno", "Médio", "Grande"][n - 1]}">${t}</button>`).join("")}</div>` : ""}<h3>${C[id][0]}</h3>${C[id][1]}</div>`).join("");
+  return `<div class="tabs"><button class="d ${S.aba === "despesa" ? "on" : ""}" data-act="aba" data-v="despesa">Despesas</button><button class="rc ${S.aba === "receita" ? "on" : ""}" data-act="aba" data-v="receita">Receitas</button></div>
+  <div class="tools" style="margin:8px 0"><span class="sp"></span>${ed ? '<button class="btn ghost" data-act="relReset">Restaurar padrão</button>' : ""}<button class="btn ${ed ? "" : "ghost"}" data-act="relEdit">${ed ? "Concluir" : "Personalizar cards"}</button></div>
+  <div class="grid rgrid" style="grid-template-columns:repeat(auto-fit,minmax(290px,1fr))">${cards}</div>`;
 };
 /* ---------- organização das categorias (catálogo padrão, junção das antigas e subgrupos sugeridos) ---------- */
 const nrm = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -1696,6 +1705,10 @@ const A = {
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   det: d => detalhe(d), irCartao: d => { S.menu = false; S.view = "cartoes"; S.cartao = d.id; $("#main").scrollTop = 0; render(); },
   diaCal: d => { const n = ultimoDia(S.mes), ls = doMes(S.aba).filter(l => diaComp(l, n) === Number(d.v)); modalLista(`${pad(d.v)}/${S.mes.slice(5)} — ${S.aba === "despesa" ? "gastos do dia" : "entradas do dia"}`, ls); },
+  relEdit: () => { S.relEdit = !S.relEdit; render(); },
+  relMove: d => { const o = relOrdem(), i = o.indexOf(d.id), j = i + Number(d.d); if (i < 0 || j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; relSalvar({ ordem: o }); },
+  relTam: d => relSalvar({ tam: { ...(relLay().tam || {}), [d.id]: Number(d.v) } }),
+  relReset: () => relSalvar({ ordem: REL_IDS, tam: {} }),
   irMes: d => { S.mes = d.v; S.per = "mes"; S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; render(); },
   editObj: d => formObj(d.id),
   objMov: d => { const o = by("objetivos", d.id), s = Number(d.s); openForm({ title: `${s > 0 ? "Guardar em" : "Retirar de"} ${esc(o.nome)}`, values: { v: "" }, fields: [{ k: "v", label: "Valor (R$)", type: "money" }],
@@ -2044,3 +2057,10 @@ async function iniciar() {
 }
 iniciar();
 if ("serviceWorker" in navigator && location.protocol === "https:" && !window.FORCE_DEMO) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+(() => { let drag = null;
+  document.addEventListener("dragstart", e => { const c = e.target.closest?.(".rcard.ed"); if (!c) return; drag = c.dataset.rid; c.classList.add("arrastando"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", drag); } catch {} });
+  document.addEventListener("dragover", e => { const c = e.target.closest?.(".rcard.ed"); if (!drag || !c) return; e.preventDefault(); document.querySelectorAll(".rcard.alvo").forEach(x => x !== c && x.classList.remove("alvo")); if (c.dataset.rid !== drag) c.classList.add("alvo"); });
+  document.addEventListener("dragend", () => { drag = null; document.querySelectorAll(".rcard.alvo,.rcard.arrastando").forEach(x => x.classList.remove("alvo", "arrastando")); });
+  document.addEventListener("drop", e => { const c = e.target.closest?.(".rcard.ed"); if (!drag || !c) return; e.preventDefault(); const de = drag, para = c.dataset.rid; drag = null; if (de === para) return; const o = relOrdem().filter(i => i !== de); o.splice(o.indexOf(para) + (relOrdem().indexOf(de) < relOrdem().indexOf(para) ? 1 : 0), 0, de); relSalvar({ ordem: o }); });
+})();
