@@ -1549,7 +1549,28 @@ const FLORESTA_CSS = "body{background:radial-gradient(900px 520px at 12% -5%,#d9
  + ".mes{background:rgba(255,255,255,.85);box-shadow:0 1px 3px rgba(16,40,30,.1)}html.dark .mes{background:var(--soft)}.stat .dot{border-radius:12px;width:40px;height:40px}.stat .v{font-size:19px;letter-spacing:-.02em}.val,.b,.bv{font-variant-numeric:tabular-nums}"
  + ".row{border-radius:14px;transition:background .15s ease}.row:hover{background:var(--soft)}.cd{border-radius:14px}.prog,.prog i{border-radius:99px}"
  + ".modal{border-radius:26px;animation:mfPop .26s cubic-bezier(.2,.8,.2,1)}.toast{animation:mfUp .3s ease}@keyframes mfPop{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}";
-const TEMAS_PRONTOS = [{ id: "floresta", nome: "Floresta (estilo do vídeo)", graf: true, curvas: true,
+const PRO_CSS = "body{font-family:Inter,'SF Pro Text',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-feature-settings:'tnum','cv11','ss01';letter-spacing:-.006em;background:var(--bg)}h2{font-size:24px;font-weight:650;letter-spacing:-.025em}"
+ + ".top{background:var(--card);border-bottom:1px solid var(--line);box-shadow:none}.side{background:var(--card);border-right:1px solid var(--line);box-shadow:none}.side button{border-radius:12px;color:var(--mut);transition:background .15s,color .15s}.side button:hover{background:var(--soft);color:var(--ink)}.side button.on{background:#ecebff;color:#4b3fd6;box-shadow:inset 3px 0 0 #4b3fd6}html.dark .side button.on{background:#232047;color:#a9a3ff;box-shadow:inset 3px 0 0 #8b83ff}"
+ + ".card{border-radius:16px;border:1px solid var(--line);background:var(--card);box-shadow:0 1px 2px rgba(16,24,40,.04);transition:border-color .15s ease,box-shadow .15s ease}.card:hover{border-color:#d3d6e4;box-shadow:0 2px 8px rgba(16,24,40,.06)}html.dark .card:hover{border-color:#34406a}"
+ + ".card>h3{font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}.stat .dot{border-radius:10px;width:36px;height:36px}.stat .v{font-size:22px;font-weight:650;letter-spacing:-.03em;line-height:1.15}.stat small{font-size:12px}"
+ + ".fab,.btn:not(.ghost):not(.danger){background:#4b3fd6;color:#fff;border-radius:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 1px 2px rgba(75,63,214,.45);transition:transform .12s ease,filter .15s ease,box-shadow .15s ease}.fab{border-radius:50%}.fab:hover,.btn:not(.ghost):not(.danger):hover{filter:brightness(1.08)}.btn:active,.fab:active{transform:scale(.97)}html.dark .fab,html.dark .btn:not(.ghost):not(.danger){background:#6d63f0}"
+ + ".btn.ghost{border-radius:10px;border:1px solid var(--line);transition:background .15s,border-color .15s}.btn.ghost:hover{background:var(--soft);border-color:#c9cde0}"
+ + ".seg{background:#eceef5;border:0;border-radius:10px;padding:3px;gap:2px}html.dark .seg{background:#1d2340}.seg button{border-radius:8px;transition:background .15s,color .15s,box-shadow .15s}.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(16,24,40,.14),0 0 0 1px rgba(16,24,40,.04)}"
+ + ".tabs{border:0;background:#eceef5;border-radius:10px;padding:3px;gap:2px}html.dark .tabs{background:#1d2340}.tabs button{border:0;border-radius:8px;transition:background .15s,color .15s}.tabs button.on,.tabs button.on.d,.tabs button.on.rc{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(16,24,40,.14),0 0 0 1px rgba(16,24,40,.04)}"
+ + ".mes{background:var(--card);border:1px solid var(--line);box-shadow:none}.row{border-radius:10px;transition:background .12s ease,box-shadow .12s ease}.row:hover{background:var(--soft);box-shadow:inset 2px 0 0 #4b3fd6}.cd{border-radius:10px}.prog,.prog i{border-radius:99px}.bar .t{border-radius:0 6px 6px 0}"
+ + "a,.link{color:#4b3fd6}html.dark a,html.dark .link{color:#a9a3ff}:focus-visible{outline:2px solid #4b3fd6;outline-offset:2px;border-radius:8px}html.dark :focus-visible{outline-color:#a9a3ff}"
+ + ".modal{border-radius:18px;border:1px solid var(--line);box-shadow:0 24px 60px rgba(16,24,40,.22);animation:mfPop .2s cubic-bezier(.2,.8,.2,1)}.toast{background:var(--card);color:var(--ink);border:1px solid var(--line);border-left:3px solid #4b3fd6;border-radius:10px;box-shadow:0 10px 30px rgba(16,24,40,.16);animation:mfUp .22s ease}@keyframes mfPop{from{opacity:0;transform:scale(.975)}to{opacity:1;transform:none}}";
+function contarNumeros() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  document.querySelectorAll(".stat .v").forEach(el => { const m = /^(-?)R\$\s?([\d.]+),(\d{2})$/.exec(el.textContent.trim()); if (!m || el.dataset.cnt === "1") return; el.dataset.cnt = "1";
+    const alvo = (m[1] ? -1 : 1) * Number(m[2].replace(/\./g, "") + "." + m[3]), fim = el.textContent, t0 = performance.now();
+    const passo = t => { const k = Math.min(1, (t - t0) / 750), e = 1 - Math.pow(1 - k, 3); el.textContent = k < 1 ? brl(alvo * e) : fim; if (k < 1) requestAnimationFrame(passo); }; requestAnimationFrame(passo); });
+}
+const TEMAS_PRONTOS = [{ id: "indigo", nome: "Índigo Pro (profissional)", graf: true, curvas: true, contar: true, semEntrada: true,
+  claro: { "--bg": "#f5f6fa", "--card": "#ffffff", "--ink": "#14182b", "--mut": "#687089", "--line": "#e6e8f0", "--soft": "#f0f1f7", "--pri": "#4b3fd6", "--ok": "#12a374", "--bad": "#e5484d", "--warn": "#f5a524", "--shadow": "0 1px 2px rgba(16,24,40,.05)" },
+  escuro: { "--bg": "#0d1120", "--card": "#141a2e", "--ink": "#e9ecf8", "--mut": "#8f98b8", "--line": "#232b47", "--soft": "#1a2140", "--pri": "#8b83ff", "--shadow": "0 1px 3px rgba(0,0,0,.45)" },
+  css: PRO_CSS },
+  { id: "floresta", nome: "Floresta (estilo do vídeo)", graf: true, curvas: true,
   claro: { "--bg": "#f5f8f4", "--card": "#ffffff", "--ink": "#10201a", "--mut": "#6e7f76", "--line": "#e4ece6", "--soft": "#eef4ef", "--pri": "#14573f", "--ok": "#1f8a5b", "--warn": "#e8a21b", "--shadow": "0 1px 2px rgba(16,40,30,.05),0 12px 30px rgba(16,40,30,.07)" },
   escuro: { "--bg": "#0c1511", "--card": "#14201a", "--ink": "#e7f1ec", "--mut": "#8ba197", "--line": "#22332b", "--soft": "#1a2a22", "--pri": "#4cc48f", "--shadow": "0 1px 3px rgba(0,0,0,.45)" },
   css: FLORESTA_CSS },
@@ -1564,10 +1585,10 @@ const temaAtivo = () => temasTodos().find(t => t.id === temasSalvos().ativo) || 
 function cssTema(t) {
   const bloco = (sel, o) => o ? `${sel}{${Object.entries(o).filter(([k, v]) => /^--[\w-]+$/.test(k) && !/[{};<]/.test(String(v))).map(([k, v]) => `${k}:${v}`).join(";")}}` : "";
   const extra = String(t.css || "").replace(/@import[^;]*;?/gi, "").replace(/url\s*\(\s*['"]?\s*(https?:)?\/\//gi, "none(").replace(/<\/?style/gi, "");
-  return bloco(":root", t.claro) + bloco("html.dark", t.escuro) + extra + (t.graf ? ANIM_GRAFICOS : "");
+  return bloco(":root", t.claro) + bloco("html.dark", t.escuro) + extra + (t.graf ? ANIM_GRAFICOS + (t.semEntrada ? "body.mf-anim main .card{animation:none!important}" : "") : "");
 }
 let TEMA_APLICADO = null, ULT_VISTA = "", T_ANIM = 0;
-function animarVista() { const k = [S.view, S.mes, S.aba, S.per, S.carregado].join("|"); if (k === ULT_VISTA) { document.body.classList.remove("mf-anim"); return; } ULT_VISTA = k; document.body.classList.add("mf-anim"); clearTimeout(T_ANIM); T_ANIM = setTimeout(() => document.body.classList.remove("mf-anim"), 2000); }
+function animarVista() { const k = [S.view, S.mes, S.aba, S.per, S.carregado].join("|"); if (k === ULT_VISTA) { document.body.classList.remove("mf-anim"); return; } ULT_VISTA = k; document.body.classList.add("mf-anim"); if (document.body.classList.contains("mf-contar")) setTimeout(contarNumeros, 40); clearTimeout(T_ANIM); T_ANIM = setTimeout(() => document.body.classList.remove("mf-anim"), 2000); }
 function aplicarTema(t) {
   const chave = t ? JSON.stringify(t) : ""; if (chave === TEMA_APLICADO) return; TEMA_APLICADO = chave;
   let el = document.getElementById("tema-css"); if (!el) { el = document.createElement("style"); el.id = "tema-css"; document.head.appendChild(el); }
@@ -1581,7 +1602,7 @@ function temaInicial() {
   } catch (e) {}
 }
 temaInicial();
-const sincronizarTema = () => { if (!(S.carregado || S.demo)) return; const t = temaAtivo(); document.body.classList.toggle("mf-curvas", !!t?.curvas); const g = !!(t?.graf || temasSalvos().graficos); aplicarTema(t || g ? { ...(t || {}), graf: g } : null); };
+const sincronizarTema = () => { if (!(S.carregado || S.demo)) return; const t = temaAtivo(); document.body.classList.toggle("mf-curvas", !!t?.curvas); document.body.classList.toggle("mf-contar", !!t?.contar); const g = !!(t?.graf || temasSalvos().graficos); aplicarTema(t || g ? { ...(t || {}), graf: g } : null); };
 async function salvarTemas(o) { await store.set("config", "temas", { lista: temasSalvos().lista || [], ativo: temasSalvos().ativo || "", graficos: !!temasSalvos().graficos, ...o }); }
 const cardTemas = () => { const at = temasSalvos().ativo || "", linha = (id, nome, sub, del) => `<div class="row" data-act="tema" data-id="${esc(id)}"><div class="tx"><div>${esc(nome)}</div><small>${esc(sub)}</small></div>${del ? `<button class="btn danger" data-act="temaDel" data-id="${esc(id)}">Excluir</button>` : ""}<span class="ck ${at === id || (!at && id === "padrao") ? "on" : ""}">✓</span></div>`;
   return `<div class="card" style="max-width:520px;margin-bottom:14px"><h3>Aparência e animações</h3>
