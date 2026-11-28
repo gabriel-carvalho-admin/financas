@@ -358,4 +358,4 @@ td.lkc{cursor:pointer}td.lkc:hover{background:var(--soft)}
 .grid{align-items:start}.grid>.card{align-self:start}
 .stats>.card,.stats>.stat{align-self:start}
 .rlim.fecha{max-height:420px;overflow-y:auto;overscroll-behavior:contain;-webkit-mask-image:linear-gradient(#000 88%,transparent);mask-image:linear-gradient(#000 88%,transparent)}.rexp{display:block;margin:8px auto 0}
-.rgrid{grid-auto-rows:8px;grid-auto-flow:dense;gap:0 14px}
+.mosaico{grid-auto-rows:8px;grid-auto-flow:dense;row-gap:0!important;align-items:start}.mosaico>*{align-self:start}

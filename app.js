@@ -716,8 +716,12 @@ function gantt() {
   const bar = r => { const a = Math.max(0, pos(r.ini) < 0 ? (r.ini < ini0 ? 0 : N) : pos(r.ini)), z = Math.min(N - 1, pos(r.fim) < 0 ? (r.fim > meses[N - 1] ? N - 1 : -1) : pos(r.fim)), w = (z - a + 1) / col * 100, atual = Math.max(0, Math.min(z, pos(S.mes)) - a + 1) / (z - a + 1) * 100; return `<div class="gb"><i style="left:${a / col * 100}%;width:${w}%"><b style="width:${atual}%"></b></i></div>`; };
   return `<div class="gantt"><span></span><div class="gh">${meses.map(ym => `<span>${MESES[Number(ym.slice(5)) - 1].slice(0, 3).toLowerCase()}</span>`).join("")}</div><span></span>${rows.map(r => `<span class="gn2" title="${esc(r.b.descricao)}">${esc(baseNome(r.b.descOrig || r.b.descricao))}</span>${bar(r)}<span class="gv" title="Termina em ${r.fim.slice(5)}/${r.fim.slice(0, 4)}">${r.b.parcela}/${r.b.parcelas} · ${brl(r.b.valor)}</span>`).join("")}</div><div class="sum" style="margin-top:6px"><span>Parcelas já lançadas até o mês em tela ficam preenchidas</span></div>`;
 }
-function empacotar() { const g = document.querySelector(".rgrid"); if (!g) return; const ajusta = () => { if (!g.isConnected) return; g.querySelectorAll(":scope>.rcard").forEach(c => { c.style.gridRowEnd = ""; }); g.querySelectorAll(":scope>.rcard").forEach(c => { c.style.gridRowEnd = "span " + Math.ceil((c.offsetHeight + 14) / 8); }); };
-  ajusta(); requestAnimationFrame(ajusta); setTimeout(ajusta, 400); if (!window.__rcRz) { window.__rcRz = 1; addEventListener("resize", () => { if (S.view === "relatorios") requestAnimationFrame(empacotar); }); } }
+let ROMOS = [];
+function empacotar() { ROMOS.forEach(o => o.disconnect()); ROMOS = [];
+  document.querySelectorAll("main .rgrid, main .dash2, main .grid:not(.cc):not(.pgrp):not(.dash):not(.rgrid)").forEach(g => { const kids = [...g.children].filter(k => !k.matches(".vazio,.empty")); if (kids.length < 3 && !g.matches(".rgrid,.dash2")) return; g.classList.add("mosaico");
+    const gap = parseFloat(getComputedStyle(g).columnGap) || 14, ajusta = () => { if (!g.isConnected) return; kids.forEach(c => { c.style.gridRowEnd = ""; }); kids.forEach(c => { c.style.gridRowEnd = "span " + Math.max(1, Math.ceil((c.offsetHeight + gap) / 8)); }); };
+    ajusta(); requestAnimationFrame(ajusta); setTimeout(ajusta, 450);
+    let raf = 0; const ro = new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(ajusta); }); kids.forEach(k => ro.observe(k)); ROMOS.push(ro); }); }
 const LIM = [];
 const REL_IDS = ["rank", "seis", "diario", "grupos", "cal", "casc", "rosca", "gantt"], relLay = () => by("config", "relLayout") || {};
 const relOrdem = () => { const o = (relLay().ordem || []).filter(i => REL_IDS.includes(i)); return [...o, ...REL_IDS.filter(i => !o.includes(i))]; };
@@ -1318,7 +1322,7 @@ function draw() {
   const main = $("#main"), top = main.scrollTop;
   main.innerHTML = !S.demo && !S.carregado ? '<div class="empty skl-w">Carregando…<div class="skl"><i></i><i></i><i></i><i></i><i class="g"></i><i class="g"></i></div></div>' : V[S.view]();
   if (S.view === "inicio" && (S.demo || S.carregado)) painel(main);
-  if (S.view === "relatorios") empacotar();
+  empacotar();
   main.scrollTop = top;
 }
 
