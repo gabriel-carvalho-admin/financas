@@ -339,3 +339,9 @@ td.lkc{cursor:pointer}td.lkc:hover{background:var(--soft)}
 
 .evl2{padding:6px 4px 6px 14px;gap:10px}.evl2 .tx small{display:block;color:var(--mut);font-size:12px}
 .evdn{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;color:#fff;font-size:13px;flex:none}
+/* gráficos extras dos temas com curvas */
+.saldoc{display:grid;grid-template-columns:240px 1fr;gap:6px 28px;align-items:center}.saldoc .vermais{grid-column:1/-1}
+.sgf{min-width:0}.sgt{font-size:12.5px;font-weight:600;margin-bottom:6px;color:var(--mut)}.leg2{display:flex;gap:16px;font-size:11.5px;color:var(--mut);margin-top:4px}.leg2 .lg{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.stat:has(.spk){flex-wrap:wrap}.stat:has(.spk)>div:not(.spk){flex:1;min-width:0}.stat .spk{flex:0 0 100%;margin-top:6px}.spk path{vector-effect:non-scaling-stroke}
+@media(max-width:720px){.saldoc{grid-template-columns:1fr}}
+@media(max-width:720px){.sgf{overflow-x:auto}.sgf svg{min-width:520px}}

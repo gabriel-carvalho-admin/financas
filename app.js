@@ -281,6 +281,34 @@ function linhaArea(p, xa, xb, base, cor, op, sw) {
     const txt = t.dataset.tip || t.closest("g")?.dataset.tip; if (txt) { TIP.textContent = txt; TIP.style.display = "block"; } else TIP.style.display = "none"; });
   document.addEventListener("mousemove", e => { if (TIP.style.display === "block") { TIP.style.left = Math.min(e.clientX + 14, innerWidth - TIP.offsetWidth - 8) + "px"; TIP.style.top = (e.clientY + 16) + "px"; } });
   document.addEventListener("mouseout", e => { if (!e.relatedTarget) TIP.style.display = "none"; }); })();
+const curvaD = p => p.map((q, i) => { const f = v => v.toFixed(1); if (!i) return `M${f(q[0])},${f(q[1])}`; const a = p[i - 1], k = (q[0] - a[0]) * .42; return `C${f(a[0] + k)},${f(a[1])} ${f(q[0] - k)},${f(q[1])} ${f(q[0])},${f(q[1])}`; }).join("");
+const diasDoPer = P => { const a = []; for (let d = P.ini; d <= P.fim && a.length < 63; d = new Date(new Date(d + "T12:00:00").getTime() + 864e5).toISOString().slice(0, 10)) a.push(d); return a.length >= 5 && a.length <= 62 ? a : null; };
+function serieFluxo(P, inicial) {
+  const dias = diasDoPer(P); if (!dias) return null;
+  const idx = new Map(dias.map((d, i) => [d, i])), real = Array(dias.length).fill(0), prev = Array(dias.length).fill(0);
+  S.data.lancamentos.forEach(l => { if (l.cartaoId || l.tipo === "transferencia" || !idx.has(l.data)) return; const v = l.tipo === "receita" ? l.valor : -l.valor, i = idx.get(l.data); prev[i] += v; if (l.efetivada) real[i] += v; });
+  S.data.cartoes.forEach(c => { for (let ym = ymOf(P.ini); ym <= ymOf(P.fim); ym = addMes(ym, 1)) { const d = dataNoMes(ym, c.vencimento || 10); if (!idx.has(d)) continue; const i = idx.get(d); prev[i] -= fatTotal(c.id, ym); const pg = c.pagas?.[ym]; if (pg) real[idx.has(pg.data) ? idx.get(pg.data) : i] -= pg.valor; } });
+  let a = inicial, b = inicial; const hj = dias.indexOf(hoje());
+  return { dias, real: real.map(v => (a += v)), prev: prev.map(v => (b += v)), hi: hj >= 0 ? hj : (hoje() > P.fim ? dias.length - 1 : -1) };
+}
+function graficoSaldo(s) {
+  if (!s) return "";
+  const W = 760, H = 150, pl = 10, pr = 10, pt = 12, pb = 22, n = s.dias.length, real = s.hi >= 0 ? s.real.slice(0, s.hi + 1) : [], todos = [...s.prev, ...real, 0], mx = Math.max(...todos), mn = Math.min(...todos), sp = (mx - mn) || 1;
+  const x = i => pl + i / (n - 1) * (W - pl - pr), y = v => pt + (mx - v) / sp * (H - pt - pb), pv = s.prev.map((v, i) => [x(i), y(v)]), rl = real.map((v, i) => [x(i), y(v)]);
+  const ticks = s.dias.map((d, i) => i % 5 === 0 || i === n - 1 ? `<text x="${x(i).toFixed(1)}" y="${H - 6}" font-size="10" text-anchor="middle" fill="currentColor" opacity=".55">${Number(d.slice(8))}</text>` : "").join("");
+  const zona = s.dias.map((d, i) => `<rect x="${(x(i) - (W - pl - pr) / (n - 1) / 2).toFixed(1)}" y="0" width="${((W - pl - pr) / (n - 1)).toFixed(1)}" height="${H - pb}" fill="transparent"><title>${dataBR(d)} · Previsto ${brl(s.prev[i])}${i <= s.hi ? " · Realizado " + brl(s.real[i]) : ""}</title></rect>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block"><line x1="${pl}" x2="${W - pr}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="currentColor" opacity=".22" stroke-dasharray="3 4"/>
+    <path class="pv" d="${curvaD(pv)}" fill="none" stroke="currentColor" opacity=".45" stroke-width="1.6" stroke-dasharray="5 5" stroke-linecap="round"/>
+    ${rl.length > 1 ? linhaArea(rl, x(0), x(s.hi), H - pb, "#4b3fd6", .18, 2) : ""}${rl.length ? `<circle class="hoje" cx="${rl[rl.length - 1][0].toFixed(1)}" cy="${rl[rl.length - 1][1].toFixed(1)}" r="4.5" fill="#4b3fd6" stroke="var(--card)" stroke-width="2"/>` : ""}${ticks}${zona}</svg>
+    <div class="leg2"><span><i class="lg" style="background:#4b3fd6"></i>Realizado</span><span><i class="lg" style="background:currentColor;opacity:.45"></i>Previsto (com faturas)</span></div>`;
+}
+function spark(vals, cor) {
+  if (!vals || vals.length < 3) return ""; const mx = Math.max(...vals), mn = Math.min(...vals); if (mx === mn) return "";
+  const W = 200, H = 34, p = vals.map((v, i) => [i / (vals.length - 1) * W, 3 + (mx - v) / (mx - mn) * (H - 8)]);
+  return `<span class="spk"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px;display:block">${linhaArea(p, 0, W, H, cor, .2, 1.4)}</svg></span>`;
+}
+const acumulado = (arr, P, sinal = 1) => { const dias = diasDoPer(P); if (!dias) return null; const idx = new Map(dias.map((d, i) => [d, i])), v = Array(dias.length).fill(0);
+  arr.forEach(l => { const d = idx.has(l.data) ? l.data : l.cartaoId ? dataNoMes(S.mes, by("cartoes", l.cartaoId)?.vencimento || 10) : null; if (d && idx.has(d)) v[idx.get(d)] += l.valor * sinal; }); let a = 0; return v.map(x => (a += x)); };
 function diario(arr, cor) {
   const n = ultimoDia(S.mes), dias = Array(n).fill(0);
   arr.forEach(l => { const dd = ymOf(l.data) === S.mes ? Number(l.data.slice(8)) : Math.min(n, by("cartoes", l.cartaoId)?.vencimento || 1); dias[dd - 1] += l.valor; });
@@ -368,17 +396,18 @@ V.inicio = () => {
   const rkD = despRank(P, desp), rk = porCategoria(rkD);
   const despF = total(despRank(P, desp, "", modoFatura())), despFA = total(despRank(PA, noPer("despesa", PA), "", modoFatura())), balF = r2(total(rec) - despF);
   const rc = k => total(desp.filter(l => (l.recorrencia || "variavel") === k));
-  const stat = (act, cor, sym, v, lbl, extra = "", c = "") => `<div class="card stat clk" ${act}><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small>${extra}</div></div>`;
+  const fluxo = suave() ? serieFluxo(P, T("inicial")) : null, ate = (a, hi) => a && hi >= 0 ? a.slice(0, hi + 1) : a, sRec = suave() ? acumulado(rec, P) : null, sDes = suave() ? acumulado(desp, P) : null;
+  const stat = (act, cor, sym, v, lbl, extra = "", c = "", sk = "") => `<div class="card stat clk" ${act}><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${brl(v)}</div><small>${lbl}</small>${extra}</div>${sk}</div>`;
   const prev = v => `<small class="mut">Previsto ${brl(v)}</small>`;
   const pend = S.data.lancamentos.filter(l => !l.efetivada && !l.cartaoId && l.data <= P.fim).sort((a, b) => a.data.localeCompare(b.data));
   const devem = S.data.pessoas.map(p => ({ p, ...contaPessoa(p.id) })).filter(x => x.deve > 0.005).sort((a, b) => b.deve - a.deve);
   const objs = [...S.data.objetivos].sort((a, b) => (a.prazo || "9999").localeCompare(b.prazo || "9999"));
   return `${avisoFechamento()}${avisoFixas()}<div class="pertop"><div class="seg per">${[["dia", "Diário"], ["semana", "Semanal"], ["mes", "Mensal"], ["ano", "Anual"]].map(([k, n]) => `<button class="${S.per === k ? "on" : ""}" data-act="per" data-v="${k}">${n}</button>`).join("")}</div><span class="mut">Resumo ${P.nome}: <b>${P.label}</b> · toque nos quadros para ver os detalhes</span></div>
   <div class="grid dash">
-  <div class="card clk" data-act="det" data-k="saldo"><div class="tl">
+  <div class="card clk ${fluxo ? "saldoc" : ""}" data-act="det" data-k="saldo"><div class="tl">
     <div><span class="v">${brl(T("inicial"))}</span><small>Inicial (antes do período)</small></div>
     <div class="now"><span class="v ${cls(T("saldo"))}">${brl(T("saldo"))}</span><small>Saldo no fim do período</small></div>
-    <div><span class="v">${brl(T("previsto"))}</span><small>Previsto</small></div></div><div class="vermais">ver detalhamento ›</div></div>
+    <div><span class="v">${brl(T("previsto"))}</span><small>Previsto</small></div></div>${fluxo ? `<div class="sgf"><div class="sgt">Saldo ao longo do período</div>${graficoSaldo(fluxo)}</div>` : ""}<div class="vermais">ver detalhamento ›</div></div>
   <div class="card"><h3>Ranking de categorias <button class="link" data-act="det" data-k="des">ver tudo</button></h3><div class="seg per" style="margin-bottom:8px"><button class="${rkFatOn() ? "" : "on"}" data-act="rkModo" data-v="0" title="Gastos pela data em que a compra foi feita">Pela data da compra</button><button class="${rkFatOn() ? "on" : ""}" data-act="rkModo" data-v="1" title="Contas pagas na data + faturas dos cartões que vencem no período">Com faturas dos cartões</button></div>${barras(rk, true)}${rk.length ? `<div class="sum">Total ${rkFatOn() ? "(contas + faturas)" : "gasto"} ${P.nome}: ${brl(total(rkD))} · toque em uma categoria</div>` : ""}</div>
   <div class="c-side">
     ${cardFixas()}
@@ -390,10 +419,10 @@ V.inicio = () => {
   </div>
   <div class="c-main">
     <div class="stats s5">
-      ${stat('data-act="nav" data-v="contas"', "#3b7ddd", "🏦", T("saldo"), "Saldo nas contas", prev(T("previsto")), cls(T("saldo")))}
-      ${stat('data-act="det" data-k="rec"', "#2e9e5b", "＋", T("rec"), "Receitas recebidas", prev(total(rec)) + variacao(total(rec), total(noPer("receita", PA))), "pos")}
-      ${stat('data-act="det" data-k="des"', "#d9483b", "－", T("des"), "Despesas pagas (saídas das contas)", prev(despF) + variacao(despF, despFA), "neg")}
-      ${stat('data-act="det" data-k="bal"', "#f5b335", "⇅", r2(T("rec") - T("des")), "Balanço", prev(balF), cls(T("rec") - T("des")))}
+      ${stat('data-act="nav" data-v="contas"', "#3b7ddd", "🏦", T("saldo"), "Saldo nas contas", prev(T("previsto")), cls(T("saldo")), fluxo ? spark(ate(fluxo.real, fluxo.hi), "#3b7ddd") : "")}
+      ${stat('data-act="det" data-k="rec"', "#2e9e5b", "＋", T("rec"), "Receitas recebidas", prev(total(rec)) + variacao(total(rec), total(noPer("receita", PA))), "pos", spark(sRec, "#2e9e5b"))}
+      ${stat('data-act="det" data-k="des"', "#d9483b", "－", T("des"), "Despesas pagas (saídas das contas)", prev(despF) + variacao(despF, despFA), "neg", spark(sDes, "#d9483b"))}
+      ${stat('data-act="det" data-k="bal"', "#f5b335", "⇅", r2(T("rec") - T("des")), "Balanço", prev(balF), cls(T("rec") - T("des")), sRec && sDes ? spark(sRec.map((v, i) => v - sDes[i]), "#f5a524") : "")}
       ${stat('data-act="nav" data-v="cartoes"', "#5b6ee0", "💳", fat, S.per === "mes" ? "Total faturas" : "Faturas que vencem no período", variacao(fat, fatAnt))}
     </div>
     <div class="card"><h3>Contas <button class="link" data-act="nav" data-v="contas">ver</button></h3>${tabContas(rs, true, 'det" data-k="conta', P)}</div>
@@ -1528,7 +1557,7 @@ function exportarBackup() {
 /* ---------- temas (aparência e animações) ---------- */
 const ANIM_GRAFICOS = "@keyframes mfGrowX{from{transform:scaleX(0)}to{transform:none}}@keyframes mfGrowY{from{transform:scaleY(0)}to{transform:none}}@keyframes mfDraw{from{stroke-dashoffset:3000}to{stroke-dashoffset:0}}@keyframes mfFade{from{opacity:0}}@keyframes mfUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}@keyframes mfDonut{from{opacity:0;transform:rotate(-90deg)}to{opacity:1;transform:none}}"
  + "body.mf-anim .bar .t{transform-origin:left;animation:mfGrowX .8s cubic-bezier(.2,.8,.2,1) both}body.mf-anim .prog i{transform-origin:left;animation:mfGrowX .9s cubic-bezier(.2,.8,.2,1) both}"
- + "body.mf-anim svg:not(.ico) polyline{stroke-dasharray:3000;animation:mfDraw 1.3s ease both}body.mf-anim .ln{stroke-dasharray:3000;animation:mfDraw 1.4s ease both}body.mf-anim .ar{animation:mfFade 1.4s ease both}body.mf-anim svg:not(.ico) polygon{animation:mfFade 1.4s ease both}"
+ + "body.mf-anim svg:not(.ico) polyline{stroke-dasharray:3000;animation:mfDraw 1.3s ease both}body.mf-anim .pv{animation:mfFade 1.6s ease both}body.mf-anim .hoje{animation:mfFade .4s ease 1.2s both}body.mf-anim .ln{stroke-dasharray:3000;animation:mfDraw 1.4s ease both}body.mf-anim .ar{animation:mfFade 1.4s ease both}body.mf-anim svg:not(.ico) polygon{animation:mfFade 1.4s ease both}"
  + "body.mf-anim svg:not(.ico) rect[rx]{transform-box:fill-box;transform-origin:bottom;animation:mfGrowY .8s cubic-bezier(.2,.8,.2,1) both}body.mf-anim .donut .sl{transform-box:view-box;transform-origin:21px 21px;animation:mfDonut .9s ease both}body.mf-anim main .card{animation:mfUp .45s ease both}"
  + "body.mf-anim .bar:nth-child(2) .t,body.mf-anim svg:not(.ico) g:nth-child(3) rect[rx]{animation-delay:.06s}body.mf-anim .bar:nth-child(3) .t,body.mf-anim svg:not(.ico) g:nth-child(4) rect[rx]{animation-delay:.12s}body.mf-anim .bar:nth-child(4) .t,body.mf-anim svg:not(.ico) g:nth-child(5) rect[rx]{animation-delay:.18s}body.mf-anim .bar:nth-child(5) .t,body.mf-anim svg:not(.ico) g:nth-child(6) rect[rx]{animation-delay:.24s}body.mf-anim .bar:nth-child(n+6) .t,body.mf-anim svg:not(.ico) g:nth-child(n+7) rect[rx]{animation-delay:.3s}"
  + "svg:not(.ico) rect[rx]{transition:filter .15s}svg:not(.ico) rect[rx]:hover{filter:brightness(1.12)}svg circle[r=\"3\"]{transition:r .15s}svg circle[r=\"3\"]:hover{r:5}@media (prefers-reduced-motion:reduce){body.mf-anim *{animation:none!important}}";
