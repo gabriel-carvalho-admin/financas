@@ -989,7 +989,26 @@ function graficoEnergia(rows) {
   ${d.map((x, i) => { const x0 = 8 + slot * i + (slot - (bw + 2) * 4) / 2; return sr.map(([k, cor, n], j) => `<rect x="${x0 + j * (bw + 2)}" y="${base - h(pd(x, k))}" width="${bw}" height="${h(pd(x, k))}" rx="3" fill="${cor}"><title>${n}: ${kwh(pd(x, k))}/dia</title></rect>`).join("") + `<text x="${8 + slot * i + slot / 2}" y="${H - 8}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${dataBR(x.data).slice(0, 5)}</text>`; }).join("")}</svg>
   <div class="sum" style="margin-top:4px">${sr.map(([, cor, n]) => `<span><i class="lg" style="background:${cor}"></i>${n}</span>`).join("")}<span>· valores em kWh por dia</span></div>`;
 }
+const fW = w => w == null || isNaN(w) ? "—" : Math.abs(w) >= 1000 ? (w / 1000).toFixed(2).replace(".", ",") + " kW" : Math.round(w).toLocaleString("pt-BR") + " W";
+const aoVivo = () => { const d = by("config", "energiaAoVivo"); if (!d) return null; const ts = Number(d.ts) || (d.ts ? Date.parse(d.ts) : 0), min = ts ? (Date.now() - ts) / 60000 : null, solar = d.solarW == null ? null : Number(d.solarW), rede = d.redeW == null ? null : Number(d.redeW), casa = d.casaW != null ? Number(d.casaW) : solar != null && rede != null ? Math.max(0, solar + rede) : null;
+  return { d, ts, min, solar, rede, casa, fresco: min != null && min <= 5, fases: Array.isArray(d.fases) ? d.fases : [] }; };
+const quando = m => m == null ? "sem horário" : m < 1 ? "agora há pouco" : m < 60 ? `há ${Math.round(m)} min` : m < 1440 ? `há ${Math.floor(m / 60)} h` : `há ${Math.floor(m / 1440)} d`;
+function cardAoVivo() { const v = aoVivo();
+  return `<div class="card clk vivo" data-act="energiaAoVivo" style="margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><span class="dot" style="background:#f5b335;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:22px">⚡</span>
+  <div style="flex:1;min-width:180px"><b>Medição de energia ao vivo</b><div class="mut" style="font-size:13px">${v ? `${v.fresco ? '<span class="pos">● ao vivo</span>' : '<span class="mut">○ desatualizado</span>'} · atualizado ${quando(v.min)}` : "Inversor Solplanet e medidor trifásico · ainda sem conexão"}</div></div>
+  ${v && v.fresco ? `<div style="display:flex;gap:18px;flex-wrap:wrap"><div><small class="mut">Solar agora</small><div class="b pos">${fW(v.solar)}</div></div><div><small class="mut">Casa agora</small><div class="b">${fW(v.casa)}</div></div><div><small class="mut">Rede</small><div class="b ${v.rede > 0 ? "neg" : "pos"}">${v.rede == null ? "—" : (v.rede > 0 ? "↘ " : "↗ ") + fW(Math.abs(v.rede))}</div></div></div>` : ""}<span class="mut" style="font-size:20px">›</span></div>`; }
+function paginaAoVivo() { const v = aoVivo(), CAP = 20000;
+  const box = (cor, sym, val, lbl, c = "") => `<div class="card stat"><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${val}</div><small>${lbl}</small></div></div>`;
+  const fases = v?.fases || [], tp = fases.reduce((a, f) => a + (Number(f.w) || 0), 0);
+  return `<div class="tools"><button class="pill" data-act="voltarAoVivo">‹ Energia</button><h2 style="flex:1;min-width:140px">Medição ao vivo</h2>${v ? `<span class="chip">${v.fresco ? "● ao vivo" : "○ desatualizado"} · ${quando(v.min)}</span>` : ""}</div>
+  ${v ? `${v.fresco ? "" : '<div class="aviso" style="cursor:default;margin-bottom:12px">Os dados estão desatualizados (último envio ' + quando(v.min) + '). À noite o inversor desliga e o solar fica em zero; de dia, confira se a conexão está ligada.</div>'}
+  <div class="stats" style="margin-bottom:14px">${box("#f5b335", "☀", fW(v.solar), "Geração solar agora", "pos")}${box("#7e57c2", "🏠", fW(v.casa), "Consumo da casa agora")}${box(v.rede > 0 ? "#d9483b" : "#4a9be0", v.rede > 0 ? "↘" : "↗", fW(v.rede == null ? null : Math.abs(v.rede)), v.rede == null ? "Rede" : v.rede > 0 ? "Comprando da Equatorial" : "Injetando na Equatorial", v.rede > 0 ? "neg" : "pos")}${box("#2e9e5b", "∑", v.d.eHoje == null ? "—" : kwh(Number(v.d.eHoje)), "Gerado hoje")}</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start">
+    <div class="card" style="text-align:center"><h3>Uso da capacidade do inversor</h3><div class="gauge-card" style="cursor:default">${gauge(v.solar == null ? 0 : v.solar / CAP * 100, "#f5b335")}<small>${fW(v.solar)} de ${fW(CAP)} (ASW20K-LT-G2 Pro)</small></div></div>
+    <div class="card"><h3>Medidor trifásico por fase</h3>${fases.length ? `<div style="overflow:auto"><table><thead><tr><th>Fase</th><th>Tensão</th><th>Corrente</th><th>Potência</th></tr></thead><tbody>${fases.map((f, i) => `<tr><td>L${i + 1}</td><td>${f.v == null ? "—" : Number(f.v).toFixed(1).replace(".", ",") + " V"}</td><td>${f.a == null ? "—" : Number(f.a).toFixed(2).replace(".", ",") + " A"}</td><td class="b">${fW(Number(f.w))}</td></tr>`).join("")}</tbody><tfoot><tr><td>Total</td><td></td><td></td><td>${fW(tp)}</td></tr></tfoot></table></div>` : '<div class="empty">O medidor trifásico ainda não enviou dados.</div>'}</div>
+  </div>` : `<div class="card" style="max-width:640px"><h3>Aguardando a conexão</h3><div class="mut" style="line-height:1.55">Esta página mostra a geração solar, o consumo da casa, o que entra e sai da rede e cada fase do medidor, atualizando sozinha.<br><br>Ainda não chegou nenhuma leitura. Quando o inversor Solplanet e o medidor Tuya estiverem conectados ao app, os valores aparecem aqui.</div></div>`}`; }
 V.energia = () => {
+  if (S.energiaVivo) return paginaAoVivo();
   const rows = energiaCalc(), x = [...rows].reverse().find(r => ymOf(r.data) === S.mes), mes = `${MESES[Number(S.mes.slice(5)) - 1]} ${S.mes.slice(0, 4)}`, ini = Number(by("config", "energia")?.creditoInicial) || 0;
   const ant = [...rows].reverse().find(r => ymOf(r.data) < S.mes), estoqueAtual = x ? x.estoque : ant ? ant.estoque : ini, K = v => v == null ? "—" : kwh(v);
   const box = (cor, sym, v, lbl, c = "", extra = "") => `<div class="card stat"><span class="dot" style="background:${cor}">${sym}</span><div><div class="v ${c}">${v}</div><small>${lbl}</small>${extra}</div></div>`;
@@ -998,6 +1017,7 @@ V.energia = () => {
   const pd = (r, v) => v == null ? "—" : kwh(v / (r.dias || 1));
   const lanc = [...S.data.energia].sort((a, b) => dataLeit(b).localeCompare(dataLeit(a)));
   return `<div class="tools"><h2 style="flex:1">Energia</h2><button class="btn" data-act="editEnergia">Nova leitura</button><button class="btn ghost" data-act="energiaIni">Créditos iniciais</button></div>
+  ${cardAoVivo()}
   ${x ? `<div class="sum" style="justify-content:flex-start;margin:0 2px 12px"><span>Período da Equatorial: <b>${dataBR(x.de)} a ${dataBR(x.data)}</b> (${x.dias} dias${x.estimado ? " — início estimado em 30 dias; edite e informe a data da leitura anterior" : ""})</span>${x.casa != null ? `<span>média da casa: <b>${kwh(x.dias > 0 ? x.casa / x.dias : 0)}/dia</b></span>` : ""}</div>
   <div class="stats s5" style="margin-bottom:14px">
     ${box("#f5b335", "☀", K(x.ger), "Gerado (Solplanet)", "", x.ger == null ? '<span class="chip">aguardando a próxima leitura</span>' : x.gerAj ? '<span class="chip">ajustado ao período da Equatorial</span>' : "")}
@@ -1752,11 +1772,12 @@ const A = {
   dvNav: d => { dvMover(Number(d.v)); render(); }, dvHoje: () => { S.dvRef = hoje(); render(); }, dvIr: d => { S.dvRef = d.v; render(); },
   dv: d => { S.dv = d.v; try { localStorage.setItem("mf-dv", S.dv); } catch (e) {} render(); },
   editProj: d => formProjeto(d.id), novoMov: d => formMov(d.tipo), editMov: d => formMov(null, d.id),
+  energiaAoVivo: () => { S.energiaVivo = true; $("#main").scrollTop = 0; render(); }, voltarAoVivo: () => { S.energiaVivo = false; render(); },
   abrirConta: d => { S.conta = d.id; $("#main").scrollTop = 0; render(); }, voltarConta: () => { S.conta = null; render(); }, contaAba: d => { S.contaAba = d.v; render(); }, contaGr: d => { S.contaGr = d.v; render(); },
   abrirCartao: d => { S.cartao = d.id; $("#main").scrollTop = 0; render(); }, voltarCartao: () => { S.cartao = null; render(); },
   menu: () => { S.menu = !S.menu; render(); }, menuFechar: (d, e) => { if (e.target.classList.contains("dw-ov")) { S.menu = false; render(); } },
   priv: () => { S.priv = !S.priv; try { localStorage.setItem("mf-priv", S.priv ? "1" : "0"); } catch (e) {} render(); },
-  nav: d => { S.sel = null; S.menu = false; S.proj = null; S.cartao = null; S.conta = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
+  nav: d => { S.sel = null; S.menu = false; S.proj = null; S.cartao = null; S.conta = null; S.energiaVivo = false; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
   mes: d => { const n = Number(d.v), p = S.view === "inicio" ? S.per : "mes";
     if (p === "dia" || p === "semana") { S.ref = addDias(S.ref, n * (p === "dia" ? 1 : 7)); S.mes = ymOf(S.ref); }
     else { S.mes = addMes(S.mes, n * (p === "ano" ? 12 : 1)); S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; }
