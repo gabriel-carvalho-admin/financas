@@ -354,3 +354,6 @@ td.lkc{cursor:pointer}td.lkc:hover{background:var(--soft)}
 .rb{border:1px solid var(--line);background:var(--card);color:inherit;border-radius:8px;min-width:30px;height:28px;font-size:12px;font-weight:700;cursor:pointer}.rb.on{background:#6b5cf0;border-color:#6b5cf0;color:#fff}.rb:disabled{opacity:.3;cursor:default}
 
 .skl{display:none}
+
+.grid{align-items:start}.grid>.card{align-self:start}
+.stats>.card,.stats>.stat{align-self:start}
