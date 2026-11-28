@@ -718,7 +718,7 @@ function gantt() {
 }
 function empacotar() { const g = document.querySelector(".rgrid"); if (!g) return; const ajusta = () => { if (!g.isConnected) return; g.querySelectorAll(":scope>.rcard").forEach(c => { c.style.gridRowEnd = ""; }); g.querySelectorAll(":scope>.rcard").forEach(c => { c.style.gridRowEnd = "span " + Math.ceil((c.offsetHeight + 14) / 8); }); };
   ajusta(); requestAnimationFrame(ajusta); setTimeout(ajusta, 400); if (!window.__rcRz) { window.__rcRz = 1; addEventListener("resize", () => { if (S.view === "relatorios") requestAnimationFrame(empacotar); }); } }
-const LIM = ["grupos", "rosca"];
+const LIM = [];
 const REL_IDS = ["rank", "seis", "diario", "grupos", "cal", "casc", "rosca", "gantt"], relLay = () => by("config", "relLayout") || {};
 const relOrdem = () => { const o = (relLay().ordem || []).filter(i => REL_IDS.includes(i)); return [...o, ...REL_IDS.filter(i => !o.includes(i))]; };
 async function relSalvar(o) { await store.set("config", "relLayout", { ordem: relOrdem(), tam: relLay().tam || {}, ...o }); render(); }
