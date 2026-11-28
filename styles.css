@@ -352,3 +352,5 @@ td.lkc{cursor:pointer}td.lkc:hover{background:var(--soft)}
 .rcard.ed{outline:2px dashed var(--line);outline-offset:-2px;cursor:grab}.rcard.arrastando{opacity:.45}.rcard.alvo{outline:2px solid #6b5cf0;background:var(--soft)}
 .rtool{display:flex;align-items:center;gap:4px;margin:-4px 0 8px}.rtool .rsp{flex:1}.rgrip{opacity:.5;font-size:16px;padding:0 4px}
 .rb{border:1px solid var(--line);background:var(--card);color:inherit;border-radius:8px;min-width:30px;height:28px;font-size:12px;font-weight:700;cursor:pointer}.rb.on{background:#6b5cf0;border-color:#6b5cf0;color:#fff}.rb:disabled{opacity:.3;cursor:default}
+
+.skl{display:none}

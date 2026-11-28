@@ -23,6 +23,7 @@ const moneyIn = n => n ? n.toLocaleString("pt-BR", { minimumFractionDigits: 2, m
 const pad = n => String(n).padStart(2, "0");
 const hoje = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const ymOf = d => d.slice(0, 7);
+const mesesEntre = (a, b) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5)) - Number(a.slice(5));
 const addMes = (ym, n) => { let [y, m] = ym.split("-").map(Number); m += n - 1; y += Math.floor(m / 12); m = ((m % 12) + 12) % 12; return `${y}-${pad(m + 1)}`; };
 const ultimoDia = ym => { const [y, m] = ym.split("-").map(Number); return new Date(y, m, 0).getDate(); };
 const dataNoMes = (ym, dia) => `${ym}-${pad(Math.min(dia, ultimoDia(ym)))}`;
@@ -661,8 +662,14 @@ function orcLista(curto) {
     ${curto ? "" : `<small>${brl(g)} de ${brl(o.valor)} · ${p.toFixed(0)}% utilizado</small>`}</div>${curto ? `<small class="mut">${p.toFixed(0)}%</small>` : ""}</div>`;
   }).join("");
 }
+const gauge = (p, cor) => { const f = Math.min(100, p) / 100 * 251.3; return `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="var(--soft)" stroke-width="9"/><circle class="gg" cx="50" cy="50" r="40" fill="none" stroke="${p > 100 ? "var(--bad)" : esc(cor)}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${f.toFixed(1)} 252" transform="rotate(-90 50 50)"/><text x="50" y="54" text-anchor="middle" font-size="17" font-weight="700" fill="currentColor">${p.toFixed(0)}%</text></svg>`; };
+function orcGauges() {
+  const desp = doMes("despesa"), os = S.data.orcamentos; if (!os.length) return '<div class="empty">Nenhum orçamento definido.</div>';
+  return `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">${os.map(o => { const c = cat(o.categoriaId), g = total(desp.filter(l => l.categoriaId === o.categoriaId)), p = o.valor ? g / o.valor * 100 : 0, resta = r2(o.valor - g);
+    return `<div class="card gauge-card" data-act="editOrc" data-id="${o.id}">${gauge(p, c.cor)}<div class="gn">${esc(c.icone + " " + c.nome)}</div><small>${brl(g)} de ${brl(o.valor)}</small><b class="${cls(resta)}">${resta >= 0 ? "sobram " : "estourou "}${brl(Math.abs(resta))}</b></div>`; }).join("")}</div>`;
+}
 V.orcamentos = () => `<div class="tools"><h2 style="flex:1">Orçamentos</h2><button class="btn" data-act="editOrc">Novo orçamento</button></div>
-  <div class="card"><div class="sum" style="margin:0 0 6px">Valor que sobra em cada categoria neste mês</div>${orcLista(false)}</div>`;
+  ${document.body.classList.contains("mf-saas") ? orcGauges() : ""}<div class="card"><div class="sum" style="margin:0 0 6px">Valor que sobra em cada categoria neste mês</div>${orcLista(false)}</div>`;
 
 function empilhado(tipo) {
   const ms = Array.from({ length: 6 }, (_, i) => addMes(S.mes, i - 5)).filter(m => m >= inicioDados()), dados = ms.map(ym => ({ ym, rk: porCategoria(doMes(tipo, ym)) })), tot = new Map();
@@ -700,7 +707,16 @@ function cascata() {
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" x2="${W - 6}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="currentColor" opacity=".2"/>${g}</svg><div class="sum" style="margin-top:2px"><span>Como as receitas viram saldo neste mês</span></div>`;
 }
 const acc0 = (bs, i) => bs[i].tot ? bs[i].b : bs[i].a;
-const REL_IDS = ["rank", "seis", "diario", "grupos", "cal", "casc", "rosca"], relLay = () => by("config", "relLayout") || {};
+function gantt() {
+  const m = new Map(); S.data.lancamentos.filter(l => l.tipo === "despesa" && l.parcelas > 1 && l.parcela >= 1 && l.parcela <= l.parcelas && !l.emprestimo).forEach(l => { const k = chaveSerie(l); (m.get(k) || m.set(k, []).get(k)).push(l); });
+  const ini0 = addMes(S.mes, -1), N = 12, meses = Array.from({ length: N }, (_, i) => addMes(ini0, i));
+  const rows = [...m.values()].map(g => { const b = g.reduce((a, c) => c.parcela > a.parcela ? c : a), ini = addMes(mesComp(b), -(b.parcela - 1)), fim = addMes(ini, b.parcelas - 1); return { b, ini, fim, pagas: Math.min(b.parcelas, Math.max(0, meses.indexOf(S.mes) >= 0 ? (S.mes >= ini ? mesesEntre(ini, S.mes) + 1 : 0) : 0)) }; }).filter(r => r.fim >= ini0 && r.ini <= meses[N - 1]).sort((a, b) => a.fim.localeCompare(b.fim)).slice(0, 10);
+  if (!rows.length) return '<div class="empty">Nenhuma compra parcelada em andamento.</div>';
+  const pos = ym => meses.indexOf(ym), col = N;
+  const bar = r => { const a = Math.max(0, pos(r.ini) < 0 ? (r.ini < ini0 ? 0 : N) : pos(r.ini)), z = Math.min(N - 1, pos(r.fim) < 0 ? (r.fim > meses[N - 1] ? N - 1 : -1) : pos(r.fim)), w = (z - a + 1) / col * 100, atual = Math.max(0, Math.min(z, pos(S.mes)) - a + 1) / (z - a + 1) * 100; return `<div class="gb"><i style="left:${a / col * 100}%;width:${w}%"><b style="width:${atual}%"></b></i></div>`; };
+  return `<div class="gantt"><span></span><div class="gh">${meses.map(ym => `<span>${MESES[Number(ym.slice(5)) - 1].slice(0, 3).toLowerCase()}</span>`).join("")}</div><span></span>${rows.map(r => `<span class="gn2" title="${esc(r.b.descricao)}">${esc(baseNome(r.b.descOrig || r.b.descricao))}</span>${bar(r)}<span class="gv" title="Termina em ${r.fim.slice(5)}/${r.fim.slice(0, 4)}">${r.b.parcela}/${r.b.parcelas} · ${brl(r.b.valor)}</span>`).join("")}</div><div class="sum" style="margin-top:6px"><span>Parcelas já lançadas até o mês em tela ficam preenchidas</span></div>`;
+}
+const REL_IDS = ["rank", "seis", "diario", "grupos", "cal", "casc", "rosca", "gantt"], relLay = () => by("config", "relLayout") || {};
 const relOrdem = () => { const o = (relLay().ordem || []).filter(i => REL_IDS.includes(i)); return [...o, ...REL_IDS.filter(i => !o.includes(i))]; };
 async function relSalvar(o) { await store.set("config", "relLayout", { ordem: relOrdem(), tam: relLay().tam || {}, ...o }); render(); }
 V.relatorios = () => {
@@ -715,10 +731,11 @@ V.relatorios = () => {
       ${subs.length === 1 && subs[0][0] === "Geral" ? "" : subs.map(([n, v]) => `<div class="sg"><span>${esc(n)}</span><div class="prog"><i style="width:${v / (g.v || 1) * 100}%;background:${esc(g.c.cor)};opacity:.6"></i></div><span>${brl(v)}</span></div>`).join("")}</div>`; }).join("") : '<div class="empty">Sem dados neste mês.</div>'}`],
     cal: [`Calendário de ${S.aba === "despesa" ? "gastos" : "entradas"} <small class="mut" style="font-weight:400">intensidade por dia</small>`, arr.length ? mapaCalor(arr, cor) : vazio],
     casc: ["Cascata do mês", cascata()],
+    gantt: ["Cronograma de parcelas <small class=\"mut\" style=\"font-weight:400\">próximos 12 meses</small>", gantt()],
     rosca: [`${nome} por categoria`, donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(total(arr)))]
   };
-  const tam = relLay().tam || {}, ordem = relOrdem().filter(i => suave() || (i !== "cal" && i !== "casc"));
-  const cards = ordem.map((id, k) => `<div class="card rcard t${tam[id] || 1}${ed ? " ed" : ""}" data-rid="${id}" ${ed ? 'draggable="true"' : ""}>${ed ? `<div class="rtool"><span class="rgrip" title="Arraste para mudar de lugar">⠿</span><button class="rb" data-act="relMove" data-id="${id}" data-d="-1" ${k ? "" : "disabled"} title="Mover para trás">◀</button><button class="rb" data-act="relMove" data-id="${id}" data-d="1" ${k < ordem.length - 1 ? "" : "disabled"} title="Mover para frente">▶</button><span class="rsp"></span>${[[1, "P"], [2, "M"], [3, "G"]].map(([n, t]) => `<button class="rb${(tam[id] || 1) === n ? " on" : ""}" data-act="relTam" data-id="${id}" data-v="${n}" title="${["Pequeno", "Médio", "Grande"][n - 1]}">${t}</button>`).join("")}</div>` : ""}<h3>${C[id][0]}</h3>${C[id][1]}</div>`).join("");
+  const tam = relLay().tam || {}, ordem = relOrdem().filter(i => suave() || (i !== "cal" && i !== "casc" && i !== "gantt")), saas = document.body.classList.contains("mf-saas"), BENTO = { diario: 2, casc: 2, gantt: 3 }, tamDe = id => tam[id] || (saas ? BENTO[id] : 0) || 1;
+  const cards = ordem.map((id, k) => `<div class="card rcard t${tamDe(id)}${ed ? " ed" : ""}" data-rid="${id}" ${ed ? 'draggable="true"' : ""}>${ed ? `<div class="rtool"><span class="rgrip" title="Arraste para mudar de lugar">⠿</span><button class="rb" data-act="relMove" data-id="${id}" data-d="-1" ${k ? "" : "disabled"} title="Mover para trás">◀</button><button class="rb" data-act="relMove" data-id="${id}" data-d="1" ${k < ordem.length - 1 ? "" : "disabled"} title="Mover para frente">▶</button><span class="rsp"></span>${[[1, "P"], [2, "M"], [3, "G"]].map(([n, t]) => `<button class="rb${tamDe(id) === n ? " on" : ""}" data-act="relTam" data-id="${id}" data-v="${n}" title="${["Pequeno", "Médio", "Grande"][n - 1]}">${t}</button>`).join("")}</div>` : ""}<h3>${C[id][0]}</h3>${C[id][1]}</div>`).join("");
   return `<div class="tabs"><button class="d ${S.aba === "despesa" ? "on" : ""}" data-act="aba" data-v="despesa">Despesas</button><button class="rc ${S.aba === "receita" ? "on" : ""}" data-act="aba" data-v="receita">Receitas</button></div>
   <div class="tools" style="margin:8px 0"><span class="sp"></span>${ed ? '<button class="btn ghost" data-act="relReset">Restaurar padrão</button>' : ""}<button class="btn ${ed ? "" : "ghost"}" data-act="relEdit">${ed ? "Concluir" : "Personalizar cards"}</button></div>
   <div class="grid rgrid" style="grid-template-columns:repeat(auto-fit,minmax(290px,1fr))">${cards}</div>`;
@@ -1296,7 +1313,7 @@ function draw() {
     <div class="dw-sep"></div><button data-act="priv">${ico("olho")}<span>Modo privado</span><span class="ck ${S.priv ? "on" : ""}" style="margin-left:auto;width:22px;height:22px;font-size:11px">✓</span></button>
     <button data-act="dark">${ico("config")}<span>Tema escuro</span><span class="ck ${document.documentElement.classList.contains("dark") ? "on" : ""}" style="margin-left:auto;width:22px;height:22px;font-size:11px">✓</span></button></nav></div>` : "";
   const main = $("#main"), top = main.scrollTop;
-  main.innerHTML = !S.demo && !S.carregado ? '<div class="empty">Carregando…</div>' : V[S.view]();
+  main.innerHTML = !S.demo && !S.carregado ? '<div class="empty skl-w">Carregando…<div class="skl"><i></i><i></i><i></i><i></i><i class="g"></i><i class="g"></i></div></div>' : V[S.view]();
   if (S.view === "inicio" && (S.demo || S.carregado)) painel(main);
   main.scrollTop = top;
 }
@@ -1631,7 +1648,19 @@ function contarNumeros() {
     const alvo = (m[1] ? -1 : 1) * Number(m[2].replace(/\./g, "") + "." + m[3]), fim = el.textContent, t0 = performance.now();
     const passo = t => { const k = Math.min(1, (t - t0) / 750), e = 1 - Math.pow(1 - k, 3); el.textContent = k < 1 ? brl(alvo * e) : fim; if (k < 1) requestAnimationFrame(passo); }; requestAnimationFrame(passo); });
 }
-const TEMAS_PRONTOS = [{ id: "indigo", nome: "Índigo Pro (profissional)", graf: true, curvas: true, contar: true, semEntrada: true,
+const SAAS_CSS = PRO_CSS.replace(/#4b3fd6/gi, "#6366f1").replace(/#8b83ff/gi, "#818cf8").replace(/#a9a3ff/gi, "#a5b4fc").replace(/#ecebff/gi, "#eef2ff").replace("Inter,'SF Pro Text'", "Inter,Geist,'SF Pro Text'")
+ + "@keyframes mfRing{from{stroke-dasharray:0 252}}@keyframes mfShimmer{to{background-position:-200% 0}}@keyframes mfSpring{0%{transform:translateY(14px) scale(.98);opacity:0}60%{transform:translateY(-2px) scale(1.005);opacity:1}100%{transform:none;opacity:1}}"
+ + ".card{border-radius:20px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -12px rgba(15,23,42,.10)}.card:hover{box-shadow:0 2px 4px rgba(15,23,42,.05),0 14px 32px -14px rgba(99,102,241,.28);border-color:#c7d2fe}html.dark .card:hover{border-color:#3b4170}"
+ + "body.mf-anim main .card,body.mf-anim main .stat{animation:mfSpring .6s cubic-bezier(.2,.8,.2,1) both}" + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => `body.mf-anim main .card:nth-child(${i}),body.mf-anim main .stat:nth-child(${i}){animation-delay:${i * 45}ms}`).join("")
+ + "body.mf-anim .gg{animation:mfRing 1.1s cubic-bezier(.2,.8,.2,1) both}.gg{transition:stroke-dasharray .6s cubic-bezier(.2,.8,.2,1)}.gauge-card{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;cursor:pointer}.gauge-card svg{width:132px;height:132px}.gauge-card .gn{font-weight:600}.gauge-card small{color:var(--mut)}"
+ + ".btn,.fab,.seg button,.tabs button,.side button,.row{transition:transform .25s cubic-bezier(.34,1.56,.64,1),background .15s,box-shadow .15s,filter .15s}.btn:active,.fab:active,.seg button:active,.tabs button:active{transform:scale(.95)}.row:active{transform:scale(.995)}"
+ + ".skl-w{font-size:0}.skl{display:grid!important;grid-template-columns:repeat(4,1fr);gap:14px}.skl i{height:96px;border-radius:20px;background:linear-gradient(90deg,var(--soft) 25%,var(--line) 50%,var(--soft) 75%);background-size:200% 100%;animation:mfShimmer 1.3s linear infinite}.skl i.g{grid-column:span 2;height:180px}@media (max-width:700px){.skl{grid-template-columns:1fr 1fr}}"
+ + ".gantt{display:grid;grid-template-columns:minmax(90px,150px) 1fr auto;gap:6px 10px;align-items:center;font-size:12px}.gantt .gh{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;color:var(--mut);font-size:10px;text-align:center}.gantt .gb{position:relative;height:18px;border-radius:9px;background:var(--soft);overflow:hidden}.gantt .gb i{position:absolute;top:0;bottom:0;border-radius:9px;background:color-mix(in srgb,var(--pri) 30%,transparent)}.gantt .gb i b{position:absolute;inset:0 auto 0 0;border-radius:9px;background:var(--pri)}.gantt .gn2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gantt .gv{color:var(--mut);font-variant-numeric:tabular-nums}body.mf-anim .gantt .gb i{transform-origin:left;animation:mfGrowX .8s cubic-bezier(.2,.8,.2,1) both}";
+const TEMAS_PRONTOS = [{ id: "saas", nome: "SaaS Premium (bento)", graf: true, curvas: true, contar: true, semEntrada: true, saas: true,
+  claro: { "--bg": "#f8fafc", "--card": "#ffffff", "--ink": "#0f172a", "--mut": "#64748b", "--line": "#e2e8f0", "--soft": "#f1f5f9", "--pri": "#6366f1", "--ok": "#10b981", "--bad": "#ef4444", "--warn": "#f59e0b", "--shadow": "0 1px 2px rgba(15,23,42,.05)" },
+  escuro: { "--bg": "#0f172a", "--card": "#1e293b", "--ink": "#f1f5f9", "--mut": "#94a3b8", "--line": "#334155", "--soft": "#273449", "--pri": "#818cf8", "--shadow": "0 1px 3px rgba(0,0,0,.45)" },
+  css: SAAS_CSS },
+{ id: "indigo", nome: "Índigo Pro (profissional)", graf: true, curvas: true, contar: true, semEntrada: true,
   claro: { "--bg": "#f5f6fa", "--card": "#ffffff", "--ink": "#14182b", "--mut": "#687089", "--line": "#e6e8f0", "--soft": "#f0f1f7", "--pri": "#4b3fd6", "--ok": "#12a374", "--bad": "#e5484d", "--warn": "#f5a524", "--shadow": "0 1px 2px rgba(16,24,40,.05)" },
   escuro: { "--bg": "#0d1120", "--card": "#141a2e", "--ink": "#e9ecf8", "--mut": "#8f98b8", "--line": "#232b47", "--soft": "#1a2140", "--pri": "#8b83ff", "--shadow": "0 1px 3px rgba(0,0,0,.45)" },
   css: PRO_CSS },
@@ -1667,7 +1696,7 @@ function temaInicial() {
   } catch (e) {}
 }
 temaInicial();
-const sincronizarTema = () => { if (!(S.carregado || S.demo)) return; const t = temaAtivo(); document.body.classList.toggle("mf-curvas", !!t?.curvas); document.body.classList.toggle("mf-contar", !!t?.contar); const g = !!(t?.graf || temasSalvos().graficos); aplicarTema(t || g ? { ...(t || {}), graf: g } : null); };
+const sincronizarTema = () => { if (!(S.carregado || S.demo)) return; const t = temaAtivo(); document.body.classList.toggle("mf-curvas", !!t?.curvas); document.body.classList.toggle("mf-contar", !!t?.contar); document.body.classList.toggle("mf-saas", !!t?.saas); const g = !!(t?.graf || temasSalvos().graficos); aplicarTema(t || g ? { ...(t || {}), graf: g } : null); };
 async function salvarTemas(o) { await store.set("config", "temas", { lista: temasSalvos().lista || [], ativo: temasSalvos().ativo || "", graficos: !!temasSalvos().graficos, ...o }); }
 const cardTemas = () => { const at = temasSalvos().ativo || "", linha = (id, nome, sub, del) => `<div class="row" data-act="tema" data-id="${esc(id)}"><div class="tx"><div>${esc(nome)}</div><small>${esc(sub)}</small></div>${del ? `<button class="btn danger" data-act="temaDel" data-id="${esc(id)}">Excluir</button>` : ""}<span class="ck ${at === id || (!at && id === "padrao") ? "on" : ""}">✓</span></div>`;
   return `<div class="card" style="max-width:520px;margin-bottom:14px"><h3>Aparência e animações</h3>
