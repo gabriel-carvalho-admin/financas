@@ -716,6 +716,8 @@ function gantt() {
   const bar = r => { const a = Math.max(0, pos(r.ini) < 0 ? (r.ini < ini0 ? 0 : N) : pos(r.ini)), z = Math.min(N - 1, pos(r.fim) < 0 ? (r.fim > meses[N - 1] ? N - 1 : -1) : pos(r.fim)), w = (z - a + 1) / col * 100, atual = Math.max(0, Math.min(z, pos(S.mes)) - a + 1) / (z - a + 1) * 100; return `<div class="gb"><i style="left:${a / col * 100}%;width:${w}%"><b style="width:${atual}%"></b></i></div>`; };
   return `<div class="gantt"><span></span><div class="gh">${meses.map(ym => `<span>${MESES[Number(ym.slice(5)) - 1].slice(0, 3).toLowerCase()}</span>`).join("")}</div><span></span>${rows.map(r => `<span class="gn2" title="${esc(r.b.descricao)}">${esc(baseNome(r.b.descOrig || r.b.descricao))}</span>${bar(r)}<span class="gv" title="Termina em ${r.fim.slice(5)}/${r.fim.slice(0, 4)}">${r.b.parcela}/${r.b.parcelas} · ${brl(r.b.valor)}</span>`).join("")}</div><div class="sum" style="margin-top:6px"><span>Parcelas já lançadas até o mês em tela ficam preenchidas</span></div>`;
 }
+function empacotar() { const g = document.querySelector(".rgrid"); if (!g) return; const ajusta = () => { if (!g.isConnected) return; g.querySelectorAll(":scope>.rcard").forEach(c => { c.style.gridRowEnd = ""; }); g.querySelectorAll(":scope>.rcard").forEach(c => { c.style.gridRowEnd = "span " + Math.ceil((c.offsetHeight + 14) / 8); }); };
+  ajusta(); requestAnimationFrame(ajusta); setTimeout(ajusta, 400); if (!window.__rcRz) { window.__rcRz = 1; addEventListener("resize", () => { if (S.view === "relatorios") requestAnimationFrame(empacotar); }); } }
 const LIM = ["grupos", "rosca"];
 const REL_IDS = ["rank", "seis", "diario", "grupos", "cal", "casc", "rosca", "gantt"], relLay = () => by("config", "relLayout") || {};
 const relOrdem = () => { const o = (relLay().ordem || []).filter(i => REL_IDS.includes(i)); return [...o, ...REL_IDS.filter(i => !o.includes(i))]; };
@@ -735,7 +737,7 @@ V.relatorios = () => {
     gantt: ["Cronograma de parcelas <small class=\"mut\" style=\"font-weight:400\">próximos 12 meses</small>", gantt()],
     rosca: [`${nome} por categoria`, donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(total(arr)))]
   };
-  const tam = relLay().tam || {}, ordem = relOrdem().filter(i => suave() || (i !== "cal" && i !== "casc" && i !== "gantt")), saas = document.body.classList.contains("mf-saas"), BENTO = { diario: 2, casc: 2, gantt: 3 }, tamDe = id => tam[id] || (saas ? BENTO[id] : 0) || 1;
+  const tam = relLay().tam || {}, ordem = relOrdem().filter(i => suave() || (i !== "cal" && i !== "casc" && i !== "gantt")), saas = document.body.classList.contains("mf-saas"), BENTO = { diario: 2, gantt: 3 }, tamDe = id => tam[id] || (saas ? BENTO[id] : 0) || 1;
   const cards = ordem.map((id, k) => `<div class="card rcard t${tamDe(id)}${ed ? " ed" : ""}" data-rid="${id}" ${ed ? 'draggable="true"' : ""}>${ed ? `<div class="rtool"><span class="rgrip" title="Arraste para mudar de lugar">⠿</span><button class="rb" data-act="relMove" data-id="${id}" data-d="-1" ${k ? "" : "disabled"} title="Mover para trás">◀</button><button class="rb" data-act="relMove" data-id="${id}" data-d="1" ${k < ordem.length - 1 ? "" : "disabled"} title="Mover para frente">▶</button><span class="rsp"></span>${[[1, "P"], [2, "M"], [3, "G"]].map(([n, t]) => `<button class="rb${tamDe(id) === n ? " on" : ""}" data-act="relTam" data-id="${id}" data-v="${n}" title="${["Pequeno", "Médio", "Grande"][n - 1]}">${t}</button>`).join("")}</div>` : ""}<h3>${C[id][0]}</h3>${LIM.includes(id) ? `<div class="rlim${(S.relExp || {})[id] ? "" : " fecha"}">${C[id][1]}</div><button class="link rexp" data-act="relExp" data-id="${id}">${(S.relExp || {})[id] ? "Recolher ▲" : "Ver tudo ▼"}</button>` : C[id][1]}</div>`).join("");
   return `<div class="tabs"><button class="d ${S.aba === "despesa" ? "on" : ""}" data-act="aba" data-v="despesa">Despesas</button><button class="rc ${S.aba === "receita" ? "on" : ""}" data-act="aba" data-v="receita">Receitas</button></div>
   <div class="tools" style="margin:8px 0"><span class="sp"></span>${ed ? '<button class="btn ghost" data-act="relReset">Restaurar padrão</button>' : ""}<button class="btn ${ed ? "" : "ghost"}" data-act="relEdit">${ed ? "Concluir" : "Personalizar cards"}</button></div>
@@ -1316,6 +1318,7 @@ function draw() {
   const main = $("#main"), top = main.scrollTop;
   main.innerHTML = !S.demo && !S.carregado ? '<div class="empty skl-w">Carregando…<div class="skl"><i></i><i></i><i></i><i></i><i class="g"></i><i class="g"></i></div></div>' : V[S.view]();
   if (S.view === "inicio" && (S.demo || S.carregado)) painel(main);
+  if (S.view === "relatorios") empacotar();
   main.scrollTop = top;
 }
 
