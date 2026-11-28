@@ -446,8 +446,39 @@ function tabContas(rs, curto, act = "editConta", rng = { ini: `${S.mes}-01`, fim
   <tbody>${rs.map(x => `<tr class="click" data-act="${act}" data-id="${x.c.id}"><td><div class="who">${curto ? "" : '<span class="grip" data-act="nada" title="Arrastar para reordenar" aria-label="Arrastar para reordenar">⠿</span>'}${av(ini(x.c.nome), x.c.cor)}${esc(x.c.nome)}</div></td>${curto ? "" : td(x.inicial, "hs " + cls(x.inicial))}${td(x.rec, "lkc pos", lk(x, "rec"))}${td(x.des, "lkc neg", lk(x, "des"))}${curto ? "" : td(x.tc, "hs") + td(x.td, "hs")}${td(x.saldo, "b " + cls(x.saldo))}${td(x.previsto, "hs " + cls(x.previsto))}</tr>`).join("")}</tbody>
   <tfoot><tr><td>Total</td>${curto ? "" : td(T("inicial"), "hs")}${td(T("rec"))}${td(T("des"))}${curto ? "" : td(T("tc"), "hs") + td(T("td"), "hs")}${td(T("saldo"))}${td(T("previsto"), "hs")}</tr></tfoot></table></div>`;
 }
-V.contas = () => `<div class="tools"><h2 style="flex:1">Contas</h2><button class="btn" data-act="editConta">Nova conta</button></div>
-  <div class="card">${tabContas(contasOrd().map(c => ({ c, ...resumoConta(c, S.mes) })))}<div class="sum">Arraste pelo botão ⠿ à esquerda para mudar a ordem das contas.</div></div>`;
+function barrasConta(c, modo) {
+  const mv = movimentos(c.id).filter(x => x.ok && (x.t === "r" || x.t === "d")), m = S.mes, ini0 = `${m}-01`;
+  let grupos = [];
+  if (modo === "dia") { const n = ultimoDia(m); grupos = Array.from({ length: n }, (_, i) => ({ k: `${m}-${pad(i + 1)}`, lb: String(i + 1), tt: dataBR(`${m}-${pad(i + 1)}`) })); }
+  else if (modo === "semana") { let d = addDias(ini0, -new Date(ini0 + "T12:00").getDay()); const fimM = `${m}-${pad(ultimoDia(m))}`; while (d <= fimM) { const f = addDias(d, 6); grupos.push({ k: d, f, lb: dataBR(d).slice(0, 5), tt: `${dataBR(d).slice(0, 5)} a ${dataBR(f).slice(0, 5)}` }); d = addDias(d, 7); } }
+  else grupos = Array.from({ length: 6 }, (_, i) => { const ym = addMes(m, i - 5); return { k: ym, lb: MESES[Number(ym.slice(5)) - 1].slice(0, 3).toLowerCase(), tt: MESES[Number(ym.slice(5)) - 1] + " " + ym.slice(0, 4) }; });
+  const idx = x => modo === "dia" ? grupos.findIndex(g => g.k === x.d) : modo === "semana" ? grupos.findIndex(g => x.d >= g.k && x.d <= g.f) : grupos.findIndex(g => g.k === ymOf(x.d));
+  grupos.forEach(g => { g.r = 0; g.d = 0; }); mv.forEach(x => { const i = idx(x); if (i < 0) return; if (x.t === "r") grupos[i].r += x.v; else grupos[i].d += -x.v; });
+  const max = Math.max(...grupos.map(g => Math.max(g.r, g.d)), 1), W = 420, H = 170, base = H - 22, slot = (W - 12) / grupos.length, bw = Math.max(2, Math.min(18, (slot - 3) / 2)), y = v => base - v / max * (base - 14);
+  const cada = modo === "dia" ? 5 : 1;
+  const g = grupos.map((gr, i) => { const cx = 6 + slot * i + slot / 2, tt = `${gr.tt} · Receitas ${brl(gr.r)} · Despesas ${brl(gr.d)}`;
+    return `<g><rect x="${(cx - slot / 2).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${base}" fill="transparent"><title>${esc(tt)}</title></rect>${gr.r ? `<rect x="${(cx - bw - .5).toFixed(1)}" y="${y(gr.r).toFixed(1)}" width="${bw.toFixed(1)}" height="${(base - y(gr.r)).toFixed(1)}" rx="2" fill="#2e9e5b"/>` : ""}${gr.d ? `<rect x="${(cx + .5).toFixed(1)}" y="${y(gr.d).toFixed(1)}" width="${bw.toFixed(1)}" height="${(base - y(gr.d)).toFixed(1)}" rx="2" fill="#d9483b"/>` : ""}${i % cada === 0 || i === grupos.length - 1 ? `<text x="${cx.toFixed(1)}" y="${H - 7}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${gr.lb}</text>` : ""}</g>`; }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" y1="${base}" x2="${W - 6}" y2="${base}" stroke="currentColor" opacity=".2"/><text x="6" y="9" font-size="8" fill="currentColor" opacity=".55">máx. ${brl(max)}</text>${g}</svg>
+  <div class="sum" style="margin-top:2px"><span><i class="lg" style="background:#2e9e5b"></i>Receitas</span><span><i class="lg" style="background:#d9483b"></i>Despesas</span></div>`;
+}
+function paginaConta(c) {
+  const m = S.mes, mesNome = MESES[Number(m.slice(5)) - 1].toLowerCase(), r = resumoConta(c, m), tp = S.contaAba === "receita" ? "receita" : "despesa", modo = ["dia", "semana", "mes"].includes(S.contaGr) ? S.contaGr : "dia";
+  const ls = S.data.lancamentos.filter(l => !l.cartaoId && l.contaId === c.id && l.tipo === tp && ymOf(l.data) === m).sort((a, b) => b.data.localeCompare(a.data));
+  const fats = tp === "despesa" ? S.data.cartoes.flatMap(k => Object.entries(k.pagas || {}).filter(([, p]) => p.contaId === c.id && ymOf(p.data) === m).map(([ym, p]) => ({ k, ym, p }))) : [];
+  const rk = porCategoria(ls), tot = r2(total(ls) + fats.reduce((a, x) => a + x.p.valor, 0)), rec = tp === "receita";
+  const pizzaSegs = rk.map(x => ({ nome: x.c.icone + " " + x.c.nome, cor: x.c.cor, v: x.v })); if (fats.length) pizzaSegs.push({ nome: "💳 Faturas de cartão", cor: "#5b6ee0", v: r2(fats.reduce((a, x) => a + x.p.valor, 0)) });
+  return `<div class="tools"><button class="pill" data-act="voltarConta">‹ Contas</button><h2 style="flex:1;min-width:140px">${esc(c.nome)}</h2><button class="btn ghost" data-act="editConta" data-id="${c.id}">Editar</button></div>
+  <div class="stats" style="margin-bottom:14px">${statBox("#3b7ddd", "🏦", r.saldo, "Saldo em " + mesNome, cls(r.saldo))}${statBox("#2e9e5b", "＋", r.rec, "Receitas em " + mesNome)}${statBox("#d9483b", "－", r.des, "Despesas em " + mesNome, "neg")}${statBox("#f29a38", "⏳", r.previsto, "Previsto no fim do mês")}</div>
+  <div class="tabs" style="margin-bottom:14px"><button class="d ${tp === "despesa" ? "on" : ""}" data-act="contaAba" data-v="despesa">Despesas</button><button class="rc ${rec ? "on" : ""}" data-act="contaAba" data-v="receita">Receitas</button></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <div class="card"><h3>${rec ? "Receitas" : "Despesas"} por categoria</h3>${pizzaSegs.length ? donut(pizzaSegs, brl(tot)) : '<div class="empty">Sem lançamentos neste mês.</div>'}</div>
+    <div class="card"><h3>Receitas e despesas <span class="seg" style="margin-left:auto">${[["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]].map(([k, t]) => `<button class="${modo === k ? "on" : ""}" data-act="contaGr" data-v="${k}">${t}</button>`).join("")}</span></h3>${barrasConta(c, modo)}</div>
+    <div class="card"><h3>${rec ? "Receitas" : "Despesas"} de ${mesNome}</h3>${ls.map(l => linha(l)).join("")}${fats.map(x => `<div class="row">${av("💳", x.k.cor)}<div class="tx"><div>Fatura ${esc(x.k.nome)}</div><small>${dataBR(x.p.data)} · pagamento de fatura</small></div><b class="neg">${brl(x.p.valor)}</b></div>`).join("") || ""}${ls.length || fats.length ? `<div class="sum">${ls.length + fats.length} ${ls.length + fats.length === 1 ? "lançamento" : "lançamentos"} · total <b class="${rec ? "pos" : "neg"}">${brl(tot)}</b></div>` : '<div class="empty">Nenhum lançamento neste mês.</div>'}</div>
+  </div>`;
+}
+V.contas = () => { const aberta = S.conta && by("contas", S.conta); if (aberta) return paginaConta(aberta);
+  return `<div class="tools"><h2 style="flex:1">Contas</h2><button class="btn" data-act="editConta">Nova conta</button></div>
+  <div class="card">${tabContas(contasOrd().map(c => ({ c, ...resumoConta(c, S.mes) })), false, "abrirConta")}<div class="sum">Toque em uma conta para ver gastos, receitas e gráficos. Arraste pelo botão ⠿ à esquerda para mudar a ordem.</div></div>`; };
 
 const sub = l => {
   const onde = l.cartaoId ? by("cartoes", l.cartaoId)?.nome : by("contas", l.contaId)?.nome;
@@ -1721,10 +1752,11 @@ const A = {
   dvNav: d => { dvMover(Number(d.v)); render(); }, dvHoje: () => { S.dvRef = hoje(); render(); }, dvIr: d => { S.dvRef = d.v; render(); },
   dv: d => { S.dv = d.v; try { localStorage.setItem("mf-dv", S.dv); } catch (e) {} render(); },
   editProj: d => formProjeto(d.id), novoMov: d => formMov(d.tipo), editMov: d => formMov(null, d.id),
+  abrirConta: d => { S.conta = d.id; $("#main").scrollTop = 0; render(); }, voltarConta: () => { S.conta = null; render(); }, contaAba: d => { S.contaAba = d.v; render(); }, contaGr: d => { S.contaGr = d.v; render(); },
   abrirCartao: d => { S.cartao = d.id; $("#main").scrollTop = 0; render(); }, voltarCartao: () => { S.cartao = null; render(); },
   menu: () => { S.menu = !S.menu; render(); }, menuFechar: (d, e) => { if (e.target.classList.contains("dw-ov")) { S.menu = false; render(); } },
   priv: () => { S.priv = !S.priv; try { localStorage.setItem("mf-priv", S.priv ? "1" : "0"); } catch (e) {} render(); },
-  nav: d => { S.sel = null; S.menu = false; S.proj = null; S.cartao = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
+  nav: d => { S.sel = null; S.menu = false; S.proj = null; S.cartao = null; S.conta = null; S.view = d.v; $("#main") && ($("#main").scrollTop = 0); render(); },
   mes: d => { const n = Number(d.v), p = S.view === "inicio" ? S.per : "mes";
     if (p === "dia" || p === "semana") { S.ref = addDias(S.ref, n * (p === "dia" ? 1 : 7)); S.mes = ymOf(S.ref); }
     else { S.mes = addMes(S.mes, n * (p === "ano" ? 12 : 1)); S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; }
