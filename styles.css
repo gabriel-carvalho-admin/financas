@@ -345,3 +345,5 @@ td.lkc{cursor:pointer}td.lkc:hover{background:var(--soft)}
 .stat:has(.spk){flex-wrap:wrap}.stat:has(.spk)>div:not(.spk){flex:1;min-width:0}.stat .spk{flex:0 0 100%;margin-top:6px}.spk path{vector-effect:non-scaling-stroke}
 @media(max-width:720px){.saldoc{grid-template-columns:1fr}}
 @media(max-width:720px){.sgf{overflow-x:auto}.sgf svg{min-width:520px}}
+
+.heat .hm rect{transition:filter .15s,transform .15s;transform-box:fill-box;transform-origin:center}.heat .hm[data-act]:hover rect{filter:brightness(1.1);transform:scale(1.06)}

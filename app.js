@@ -263,9 +263,10 @@ function donut(segs, centro) {
   return `<svg class="donut" viewBox="0 0 42 42">${arcs}<text class="ct" data-c="${esc(centro)}" x="21" y="22" text-anchor="middle" font-size="3.4" font-weight="700" fill="currentColor">${esc(centro)}</text></svg>
   <div class="leg">${segs.map(s => `<div data-sl="${esc(s.nome)}|${brl(s.v)}|${(s.v / t * 100).toFixed(1)}%" ${s.attr ? s.attr + ' class="clk"' : ""}><i style="background:${esc(s.cor)}"></i><span>${esc(s.nome)}</span><small class="mut">${(s.v / t * 100).toFixed(1)}%</small><b>${brl(s.v)}</b></div>`).join("")}</div>`;
 }
-document.addEventListener("mouseover", e => { const el = e.target.closest?.("[data-sl]"), box = (el || e.target).closest?.(".card,.modal"); const ct = box?.querySelector(".ct"); if (!ct) return;
-  box.querySelectorAll(".sl").forEach(c => c.classList.toggle("dim", !!el && c.dataset.sl !== el.dataset.sl));
-  if (el) { const [n, v, p] = el.dataset.sl.split("|"); ct.setAttribute("font-size", "2.4"); ct.innerHTML = `<tspan x="21" dy="-1.2">${n.length > 16 ? n.slice(0, 15) + "…" : n}</tspan><tspan x="21" dy="3.4" font-size="3">${v}</tspan><tspan x="21" dy="3" font-size="2.2">${p}</tspan>`; } else { ct.setAttribute("font-size", "3.4"); ct.textContent = ct.dataset.c; } });
+document.addEventListener("click", e => { const el = e.target.closest?.("[data-sl]"); if (!el) return; const box = el.closest(".card,.modal"); if (!box?.querySelector(".ct") || el.dataset.act) return; box.dataset.sel = box.dataset.sel === el.dataset.sl ? "" : el.dataset.sl; el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
+document.addEventListener("mouseover", e => { const el = e.target.closest?.("[data-sl]"), box = (el || e.target).closest?.(".card,.modal"); const ct = box?.querySelector(".ct"); if (!ct) return; const sl = el ? el.dataset.sl : box.dataset.sel;
+  box.querySelectorAll(".sl").forEach(c => c.classList.toggle("dim", !!sl && c.dataset.sl !== sl));
+  if (sl) { const [n, v, p] = sl.split("|"); ct.setAttribute("font-size", "2.4"); ct.innerHTML = `<tspan x="21" dy="-1.2">${n.length > 16 ? n.slice(0, 15) + "…" : n}</tspan><tspan x="21" dy="3.4" font-size="3">${v}</tspan><tspan x="21" dy="3" font-size="2.2">${p}</tspan>`; } else { ct.setAttribute("font-size", "3.4"); ct.textContent = ct.dataset.c; } });
 const suave = () => document.body.classList.contains("mf-curvas");
 let GID = 0;
 function linhaArea(p, xa, xb, base, cor, op, sw) {
@@ -674,6 +675,31 @@ function empilhado(tipo) {
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" y1="${base}" x2="${W - 6}" y2="${base}" stroke="currentColor" opacity=".2"/>${g}</svg>
   <div class="sum" style="margin-top:2px">${top.map(([, o]) => `<span><i class="lg" style="background:${esc(o.c.cor)}"></i>${esc(o.c.nome)}</span>`).join("")}<span><i class="lg" style="background:#9aa4b5"></i>Outras</span></div>`;
 }
+
+/* ---------- mapa de calor de gastos e gráfico cascata (temas com curvas) ---------- */
+const diaComp = (l, n) => ymOf(l.data) === S.mes ? Number(l.data.slice(8)) : Math.min(n, by("cartoes", l.cartaoId)?.vencimento || 1);
+function mapaCalor(arr, cor) {
+  const n = ultimoDia(S.mes), dias = Array(n).fill(0), qt = Array(n).fill(0);
+  arr.forEach(l => { const d = diaComp(l, n) - 1; dias[d] += l.valor; qt[d]++; });
+  const max = Math.max(...dias, 1), ini = new Date(S.mes + "-01T12:00:00").getDay(), c = 40, g = 5, W = 7 * (c + g) - g, semanas = Math.ceil((ini + n) / 7), H = 14 + semanas * (c + g) - g;
+  const cab = ["D", "S", "T", "Q", "Q", "S", "S"].map((t, i) => `<text x="${i * (c + g) + c / 2}" y="9" font-size="9" text-anchor="middle" fill="currentColor" opacity=".5">${t}</text>`).join("");
+  const cel = dias.map((v, i) => { const k = ini + i, x = (k % 7) * (c + g), y = 14 + Math.floor(k / 7) * (c + g), pc = v ? Math.round(14 + v / max * 76) : 0, hj = `${S.mes}-${pad(i + 1)}` === hoje();
+    return `<g class="hm" ${v ? `data-act="diaCal" data-v="${i + 1}"` : ""} style="${v ? "cursor:pointer" : ""}"><rect x="${x}" y="${y}" width="${c}" height="${c}" rx="9" fill="${v ? `color-mix(in srgb, ${cor} ${pc}%, transparent)` : "currentColor"}" ${v ? "" : 'opacity=".06"'} ${hj ? `stroke="${cor}" stroke-width="1.6"` : ""}><title>${pad(i + 1)}/${S.mes.slice(5)} · ${v ? brl(v) + " em " + qt[i] + (qt[i] === 1 ? " lançamento" : " lançamentos") : "sem gastos"}</title></rect><text x="${x + c / 2}" y="${y + c / 2 + (v ? -1 : 3)}" font-size="${v ? 10 : 9}" text-anchor="middle" fill="currentColor" ${v ? 'font-weight="700"' : 'opacity=".4"'} pointer-events="none">${i + 1}</text>${v ? `<text x="${x + c / 2}" y="${y + c / 2 + 10}" font-size="7.5" text-anchor="middle" fill="currentColor" opacity=".7" pointer-events="none">${v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + " mil" : Math.round(v)}</text>` : ""}</g>`; }).join("");
+  const top = dias.indexOf(Math.max(...dias));
+  return `<svg class="heat" viewBox="0 0 ${W} ${H}" style="width:100%;max-width:380px;display:block;margin:0 auto">${cab}${cel}</svg>
+  <div class="sum" style="margin-top:8px"><span>Mais intenso: <b>dia ${top + 1}</b> · ${brl(dias[top])}</span><span>Média por dia: <b>${brl(total(arr) / n)}</b></span></div>`;
+}
+function cascata() {
+  const rec = total(doMes("receita")), rk = porCategoria(doMes("despesa")), top = rk.slice(0, 4), outras = r2(rk.slice(4).reduce((a, r) => a + r.v, 0)), desp = r2(rk.reduce((a, r) => a + r.v, 0));
+  if (!rec && !desp) return '<div class="empty">Sem dados neste mês.</div>';
+  const passos = [{ n: "Receitas", v: rec, cor: "#2e9e5b", tot: true }, ...top.map(r => ({ n: r.c.nome, v: -r.v, cor: r.c.cor })), ...(outras ? [{ n: "Outras", v: -outras, cor: "#9aa4b5" }] : []), { n: "Saldo", v: r2(rec - desp), cor: rec - desp >= 0 ? "#2e9e5b" : "#d9483b", tot: true }];
+  let acc = 0; const barras = passos.map(p => { const de = p.tot ? 0 : acc, ate = p.tot ? p.v : acc + p.v; if (!p.tot) acc = ate; else acc = p.v; return { ...p, a: Math.min(de, ate), b: Math.max(de, ate) }; });
+  const mx = Math.max(...barras.map(b => b.b), 1), mn = Math.min(...barras.map(b => b.a), 0), sp = (mx - mn) || 1, W = 340, H = 190, pt = 16, pb = 30, k = (W - 12) / barras.length, bw = Math.min(36, k - 8), y = v => pt + (mx - v) / sp * (H - pt - pb);
+  const g = barras.map((b, i) => { const cx = 6 + k * i + k / 2, y1 = y(b.b), h = Math.max(y(b.a) - y1, 2), nm = b.n.length > 9 ? b.n.slice(0, 8) + "…" : b.n;
+    return `<g><rect x="${(cx - bw / 2).toFixed(1)}" y="${y1.toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="5" fill="${esc(b.cor)}"><title>${esc(b.n)}: ${brl(b.v)}</title></rect><text x="${cx}" y="${(y1 - 4).toFixed(1)}" font-size="8" text-anchor="middle" fill="currentColor" opacity=".75">${b.tot ? "" : "−"}${S.priv ? "••" : Math.abs(b.v) >= 1000 ? (Math.abs(b.v) / 1000).toFixed(1).replace(".", ",") + "k" : Math.round(Math.abs(b.v))}</text><text x="${cx}" y="${H - 14}" font-size="8" text-anchor="middle" fill="currentColor" opacity=".65">${esc(nm)}</text></g>${i < barras.length - 1 ? `<line x1="${(cx + bw / 2).toFixed(1)}" x2="${(cx + k - bw / 2).toFixed(1)}" y1="${y(acc0(barras, i)).toFixed(1)}" y2="${y(acc0(barras, i)).toFixed(1)}" stroke="currentColor" opacity=".25" stroke-dasharray="2 2"/>` : ""}`; }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><line x1="6" x2="${W - 6}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="currentColor" opacity=".2"/>${g}</svg><div class="sum" style="margin-top:2px"><span>Como as receitas viram saldo neste mês</span></div>`;
+}
+const acc0 = (bs, i) => bs[i].tot ? bs[i].b : bs[i].a;
 V.relatorios = () => {
   const arr = doMes(S.aba), rk = porCategoria(arr), cor = S.aba === "despesa" ? "#d9483b" : "#2e9e5b";
   return `<div class="tabs"><button class="d ${S.aba === "despesa" ? "on" : ""}" data-act="aba" data-v="despesa">Despesas</button><button class="rc ${S.aba === "receita" ? "on" : ""}" data-act="aba" data-v="receita">Receitas</button></div>
@@ -684,6 +710,7 @@ V.relatorios = () => {
     <div class="card"><h3>Grupos e subgrupos</h3>${rk.length ? rk.map(g => { const sm = new Map(); arr.filter(l => (l.categoriaId || "") === g.id).forEach(l => sm.set(l.subgrupo || "Geral", (sm.get(l.subgrupo || "Geral") || 0) + l.valor)); const subs = [...sm].sort((a, b) => b[1] - a[1]);
       return `<div class="gr"><div class="gl"><i class="lg" style="background:${esc(g.c.cor)}"></i><b>${esc(g.c.icone + " " + g.c.nome)}</b><span>${g.p.toFixed(0)}%</span><b>${brl(g.v)}</b></div><div class="prog"><i style="width:${g.v / (rk[0].v || 1) * 100}%;background:${esc(g.c.cor)}"></i></div>
       ${subs.length === 1 && subs[0][0] === "Geral" ? "" : subs.map(([n, v]) => `<div class="sg"><span>${esc(n)}</span><div class="prog"><i style="width:${v / (g.v || 1) * 100}%;background:${esc(g.c.cor)};opacity:.6"></i></div><span>${brl(v)}</span></div>`).join("")}</div>`; }).join("") : '<div class="empty">Sem dados neste mês.</div>'}</div>
+    ${suave() ? `<div class="card"><h3>Calendário de ${S.aba === "despesa" ? "gastos" : "entradas"} <small class="mut" style="font-weight:400">intensidade por dia</small></h3>${arr.length ? mapaCalor(arr, cor) : '<div class="empty">Sem dados neste mês.</div>'}</div><div class="card"><h3>Cascata do mês</h3>${cascata()}</div>` : ""}
     <div class="card"><h3>${S.aba === "despesa" ? "Despesas" : "Receitas"} por categoria</h3>${donut(rk.map(r => ({ nome: r.c.icone + " " + r.c.nome, cor: r.c.cor, v: r.v })), brl(total(arr)))}</div>
   </div>`;
 };
@@ -1668,6 +1695,7 @@ const A = {
     <div class="day">Lançamentos</div>${it.sort((a, b) => b.data.localeCompare(a.data)).map(l => `<div class="row" data-act="editL" data-id="${l.id}"><div class="tx"><div>${esc(l.descricao)}</div><small>${dataBR(l.data)} · ${esc(by("cartoes", l.cartaoId)?.nome || "")} · ${esc((l.subgrupo || "").trim() || "Sem subgrupo")}</small></div><b class="neg">${brl(l.valor)}</b></div>`).join("")}
     <div class="acts"><span class="sp"></span><button class="btn ghost" data-act="fechar" data-force="1">Fechar</button></div></div></div>`; },
   det: d => detalhe(d), irCartao: d => { S.menu = false; S.view = "cartoes"; S.cartao = d.id; $("#main").scrollTop = 0; render(); },
+  diaCal: d => { const n = ultimoDia(S.mes), ls = doMes(S.aba).filter(l => diaComp(l, n) === Number(d.v)); modalLista(`${pad(d.v)}/${S.mes.slice(5)} — ${S.aba === "despesa" ? "gastos do dia" : "entradas do dia"}`, ls); },
   irMes: d => { S.mes = d.v; S.per = "mes"; S.ref = S.mes === ymOf(hoje()) ? hoje() : `${S.mes}-01`; render(); },
   editObj: d => formObj(d.id),
   objMov: d => { const o = by("objetivos", d.id), s = Number(d.s); openForm({ title: `${s > 0 ? "Guardar em" : "Retirar de"} ${esc(o.nome)}`, values: { v: "" }, fields: [{ k: "v", label: "Valor (R$)", type: "money" }],
